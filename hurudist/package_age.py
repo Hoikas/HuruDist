@@ -68,18 +68,8 @@ def main(args):
 
     # What we have now is a list of dicts, each nearly obeying the output format spec.
     # Now, we have to merge them... ugh.
-    output = {}
     logging.debug(f"Merging results from {len(results)} dependency lists...")
-    for result in results:
-        for dependency_category, dependencies in result.items():
-            if not dependency_category in output:
-                output[dependency_category] = dependencies
-            else:
-                output_category = output[dependency_category]
-                for dependency_name, dependency_dict in dependencies.items():
-                    output_dict = output_category.setdefault(dependency_name, dependency_dict)
-                    if "options" in output_dict:
-                        output_dict["options"].update(dependency_dict.get("options", set()))
+    output = _utils.coerce_asset_dicts(results)
 
     # Add in the .age, .fni, and .prp files. Note that the .csv is detected as a dependency.
     data = output.setdefault("data", {})
@@ -105,9 +95,6 @@ def main(args):
                 else:
                     logging.warning(f"Asset '{asset_source_path.name}' is missing from the client.")
                 continue
-
-            # Ensure the options element is not a set (looks nasty in YAML)
-            asset_dict["options"] = list(asset_dict.get("options", []))
 
             # Fill in some information from the filesystem.
             stat = asset_source_path.stat()

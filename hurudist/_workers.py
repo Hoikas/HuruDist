@@ -41,20 +41,20 @@ def find_page_externals(path):
     pfm_idx = plFactory.ClassIndex("plPythonFileMod")
 
     result = {
-        "python": { f"{i.object.filename}.py": { "options": set(["pfm"]) }
+        "python": { f"{i.object.filename}.py": { "options": ["pfm"] }
                     for i in mgr.getKeys(location, pfm_idx) },
 
-        "sfx": { i.object.fileName: { "options": set(sfx_flags_as_str(i.object.flags)) }
+        "sfx": { i.object.fileName: { "options": list(sfx_flags_as_str(i.object.flags)) }
                  for i in mgr.getKeys(location, sfx_idx) },
 
         # OK, so, this is highly speculative... Don't die if they don't exist.
-        "sdl": { f"{i.object.filename}.sdl": { "options": set(), "optional": True }
+        "sdl": { f"{i.object.filename}.sdl": { "optional": True }
                  for i in mgr.getKeys(location, pfm_idx) },
     }
 
     # I know this isn't pretty, deal with it.
     if mgr.getKeys(location, plFactory.ClassIndex("plRelevanceRegion")):
-        result["data"] = { f"{page_info.age}.csv": {} }
+        result["data"] = { f"{page_info.age}.csv": { } }
 
     return result
 

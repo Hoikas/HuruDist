@@ -34,6 +34,23 @@ asset_subdirectories = {
     "sfx": "GameAudio",
 }
 
+def coerce_asset_dicts(dicts):
+    """Forcibly merges asset dicts, preserving only options keys"""
+    output = {}
+    for dependency_categories in dicts:
+        for dependency_category, dependencies in dependency_categories.items():
+            if not dependency_category in output:
+                output[dependency_category] = dependencies
+            else:
+                output_category = output[dependency_category]
+                for dependency_name, dependency_dict in dependencies.items():
+                    output_dict = output_category.setdefault(dependency_name, dependency_dict)
+                    if "options" in output_dict:
+                        new_options = set(output_dict["options"])
+                        new_options.update(dependency_dict.get("options", []))
+                        output_dict["options"] = list(new_options)
+    return output
+
 class OutputManager:
     def __init__(self, path):
         self._is_zip = path.suffix == ".zip"
