@@ -30,6 +30,16 @@ except ImportError:
 def log_exception(ex):
     logging.exception(ex)
 
+def make_asset_path(args, asset_category, asset_filename):
+    subdir = _utils.client_subdirectories[asset_category]
+    asset_source_path = pathlib.Path(args.source, subdir, asset_filename)
+
+    # If this is a Python or SDL file, we will allow falling back to a specified moul-scripts repo...
+    # We avoid doing this for .age, .fni, and .csv due to the un-WDYS'd nature of those files.
+    if asset_category in {"python", "sdl"} and args.moul_scripts and not asset_source_path.exists():
+        asset_source_path = pathlib.Path(args.moul_scripts, subdir, asset_filename)
+    return asset_source_path
+
 def main(args):
     client_path = pathlib.Path(args.source)
     dat_path = client_path / "dat"
@@ -37,6 +47,14 @@ def main(args):
     if not age_path.exists():
         logging.critical(f"Age file '{age_path}' does not exist.")
         return False
+
+    if args.moul_scripts:
+        script_path = pathlib.Path(args.moul_scripts)
+        if not script_path.exists():
+            logging.error(f"Script path '{script_path}' does not exist.")
+            script_path = None
+    else:
+        script_path = None
 
     age_info = plAgeInfo()
     try:
@@ -86,9 +104,8 @@ def main(args):
     missing_assets = []
     logging.debug("Beginning final pass over assets...")
     for asset_category, assets in output.items():
-        subdir = _utils.client_subdirectories[asset_category]
         for asset_filename, asset_dict in assets.items():
-            asset_source_path = client_path / subdir / asset_filename
+            asset_source_path = make_asset_path(args, asset_category, asset_filename)
             if not asset_source_path.exists():
                 missing_assets.append((asset_category, asset_filename))
                 if asset_dict.get("optional", False):
@@ -132,7 +149,7 @@ def main(args):
             dest_subdir = _utils.asset_subdirectories[asset_category]
             for asset_filename, asset_dict in assets.items():
                 asset_dict["source"] = str(pathlib.PureWindowsPath(dest_subdir, asset_filename))
-                asset_source_path = pathlib.Path(client_path, src_subdir, asset_filename)
+                asset_source_path = make_asset_path(args, asset_category, asset_filename)
                 asset_dest_path = pathlib.Path(dest_subdir, asset_filename)
                 outfile.copy_file(asset_source_path, asset_dest_path)
 
