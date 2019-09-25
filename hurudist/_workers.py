@@ -19,11 +19,12 @@ from PyHSPlasma import *
 
 _BUFFER_SIZE = 10 * 1024 * 1024
 
-def find_page_externals(path):
+def find_page_externals(path, dlevel=plDebug.kDLNone):
     # Optimization: Textures.prp does not have any externals...
     if path.name.endswith("Textures.prp"):
         return {}
 
+    plDebug.Init(dlevel)
     mgr = plResManager()
     page_info = mgr.ReadPage(str(path))
     location = page_info.location

@@ -70,7 +70,7 @@ def main(args):
     common_pages = [dat_path / age_info.getCommonPageFilename(i, pvMoul) for i in range(age_info.getNumCommonPages(pvMoul))]
     all_pages = set(room_pages + common_pages)
     missing_pages = set()
-    logging.debug(f"Found {len(all_pages)} pages.")
+    logging.info(f"Found {len(all_pages)} Plasma pages.")
 
     # Before we begin, check against the file system to see what files are available.
     for page in all_pages:
@@ -82,12 +82,14 @@ def main(args):
     # We want to get the age dependency data. Presently, those are the python and ogg files.
     # Unfortunately, libHSPlasma insists on reading in the entire page before allowing us to
     # do any of that. So, we will execute this part in a process pool.
+    dlevel = plDebug.kDLWarning if args.verbose else plDebug.kDLNone
+    iterable = [(i, dlevel) for i in all_pages]
     pool = multiprocessing.pool.Pool()
-    results = pool.map(_workers.find_page_externals, all_pages)
+    results = pool.starmap(_workers.find_page_externals, iterable)
 
     # What we have now is a list of dicts, each nearly obeying the output format spec.
     # Now, we have to merge them... ugh.
-    logging.debug(f"Merging results from {len(results)} dependency lists...")
+    logging.info(f"Merging results from {len(results)} dependency lists...")
     output = _utils.coerce_asset_dicts(results)
 
     # Add in the .age, .fni, and .prp files. Note that the .csv is detected as a dependency.
@@ -103,7 +105,7 @@ def main(args):
     # we might be in some weird ass-environment where the other dependencies (py, ogg) don't exist.
     # So, let's handle that now.
     missing_assets = []
-    logging.debug("Beginning final pass over assets...")
+    logging.info("Beginning final pass over assets...")
     for asset_category, assets in output.items():
         for asset_filename, asset_dict in assets.items():
             asset_source_path = make_asset_path(args, asset_category, asset_filename)
@@ -153,7 +155,7 @@ def main(args):
     pool.join()
 
     # Time to produce the bundle
-    logging.debug("Producing final asset bundle...")
+    logging.info("Producing final asset bundle...")
     with _utils.OutputManager(pathlib.Path(args.destination)) as outfile:
         for asset_category, assets in output.items():
             src_subdir = client_subdirectories[asset_category]
@@ -164,7 +166,7 @@ def main(args):
                 asset_dest_path = pathlib.Path(dest_subdir, asset_filename)
                 outfile.copy_file(asset_source_path, asset_dest_path)
 
-        logging.debug("Writing bundle YAML...")
+        logging.info("Writing bundle YAML...")
         outfile.write_file("Contents.yml", dump(output, indent=4, Dumper=Dumper))
 
     return True

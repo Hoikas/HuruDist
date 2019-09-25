@@ -16,6 +16,7 @@
 import _arguments
 import importlib
 import logging
+from PyHSPlasma import *
 import sys
 import time
 
@@ -36,6 +37,8 @@ if __name__ == "__main__":
         level = logging.INFO
     logging.basicConfig(format="[%(asctime)s] %(levelname)s: %(message)s", level=level)
     logging.debug("Starting H'uru Asset Distribution Manager __main__.")
+    if not args.verbose:
+        plDebug.Init(plDebug.kDLNone)
 
     # Commands are just modules with a main() function
     module_name = commands[args.command]
@@ -48,4 +51,4 @@ if __name__ == "__main__":
     if not result:
         logging.error(f"H'uru Distribution Manager exiting with errors in {delta:.2f}s.")
     else:
-        logging.info(f"H'uru Distribution Manager completed successfully {delta:.2f}s.")
+        logging.info(f"H'uru Distribution Manager completed successfully in {delta:.2f}s.")
