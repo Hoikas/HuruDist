@@ -76,7 +76,8 @@ def main(args):
     for i in all_pages:
         data[str(i.relative_to(dat_path))] = {}
     data[f"{args.age_name}.age"] = {}
-    data[f"{args.age_name}.fni"] = {}
+    if age_info.seqPrefix > 0:
+        data[f"{args.age_name}.fni"] = {}
 
     # OK, now everything is (mostly) sane. Only exception is that find_page_external gives us a ton
     # of "suggestions" for which SDL files we may want. These files may or may not exist. Further,
