@@ -15,6 +15,7 @@
 
 import argparse
 from _constants import *
+from pathlib import Path
 
 program_description = "H'uru Asset Distribution Manager"
 main_parser = argparse.ArgumentParser(description=program_description)
@@ -28,11 +29,11 @@ sub_parsers = main_parser.add_subparsers(title="Command", dest="command", requir
 # Package age command argment parser
 age_parser = sub_parsers.add_parser("age")
 age_parser.add_argument("age_name", type=str, help="Name of the age to bundle")
-age_parser.add_argument("source", type=str, help="Path to the root of the Plasma client")
-age_parser.add_argument("destination", type=str, help="Path to store the resulting asset bundle")
+age_parser.add_argument("source", type=Path, help="Path to the root of the Plasma client")
+age_parser.add_argument("destination", type=Path, help="Path to store the resulting asset bundle")
 
 age_parser.add_argument("--dataset", type=lambda x: Dataset[x], default=Dataset.base, choices=list(Dataset),
                         help="Dataset this age belongs to")
 age_parser.add_argument("--distribute", type=lambda x: Distribute[x], choices=list(Distribute),
                         help="Ability to redistribute this asset package")
-age_parser.add_argument("--moul-scripts", type=str, help="Path to the moul-scripts repository for this client")
+age_parser.add_argument("--moul-scripts", type=Path, help="Path to the moul-scripts repository for this client")

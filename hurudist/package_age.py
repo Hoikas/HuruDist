@@ -33,29 +33,24 @@ def log_exception(ex):
 
 def make_asset_path(args, asset_category, asset_filename):
     subdir = client_subdirectories[asset_category]
-    asset_source_path = pathlib.Path(args.source, subdir, asset_filename)
+    asset_source_path = args.source.joinpath(subdir, asset_filename)
 
     # If this is a Python or SDL file, we will allow falling back to a specified moul-scripts repo...
     # We avoid doing this for .age, .fni, and .csv due to the un-WDYS'd nature of those files.
     if asset_category in {"python", "sdl"} and args.moul_scripts and not asset_source_path.exists():
-        asset_source_path = pathlib.Path(args.moul_scripts, subdir, asset_filename)
+        asset_source_path = args.moul_scripts.joinpath(subdir, asset_filename)
     return asset_source_path
 
 def main(args):
-    client_path = pathlib.Path(args.source)
-    dat_path = client_path / "dat"
-    age_path = dat_path / f"{args.age_name}.age"
+    client_path = args.source
+    dat_path = args.source.joinpath("dat")
+    age_path = dat_path.joinpath(f"{args.age_name}.age")
     if not age_path.exists():
         logging.critical(f"Age file '{age_path}' does not exist.")
         return False
 
-    if args.moul_scripts:
-        script_path = pathlib.Path(args.moul_scripts)
-        if not script_path.exists():
-            logging.error(f"Script path '{script_path}' does not exist.")
-            script_path = None
-    else:
-        script_path = None
+    if args.moul_scripts and not args.moul_scripts.exists():
+        logging.error(f"Script path '{args.moul_scripts}' does not exist.")
 
     age_info = plAgeInfo()
     try:
@@ -156,7 +151,7 @@ def main(args):
 
     # Time to produce the bundle
     logging.info("Producing final asset bundle...")
-    with _utils.OutputManager(pathlib.Path(args.destination)) as outfile:
+    with _utils.OutputManager(args.destination) as outfile:
         for asset_category, assets in output.items():
             src_subdir = client_subdirectories[asset_category]
             dest_subdir = asset_subdirectories[asset_category]
