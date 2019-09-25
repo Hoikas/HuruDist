@@ -13,6 +13,7 @@
 #    You should have received a copy of the GNU General Public License
 #    along with HuruDist.  If not, see <http://www.gnu.org/licenses/>.
 
+from _constants import *
 import functools
 import logging
 import multiprocessing, multiprocessing.pool
@@ -31,7 +32,7 @@ def log_exception(ex):
     logging.exception(ex)
 
 def make_asset_path(args, asset_category, asset_filename):
-    subdir = _utils.client_subdirectories[asset_category]
+    subdir = client_subdirectories[asset_category]
     asset_source_path = pathlib.Path(args.source, subdir, asset_filename)
 
     # If this is a Python or SDL file, we will allow falling back to a specified moul-scripts repo...
@@ -119,6 +120,16 @@ def main(args):
             asset_dict["modify_time"] = int(stat.st_mtime)
             asset_dict["size"] = stat.st_size
 
+            # Command line specs
+            asset_dict["dataset"] = args.dataset.name
+            if args.distribute is None:
+                if args.dataset == Dataset.cyan:
+                    asset_dict["distribute"] = Distribute.false.name
+                else:
+                    asset_dict["distribute"] = Distribute.true.name
+            else:
+                asset_dict["distribute"] = args.distribute.name
+
             # Now we submit slow operations to the process pool.
             def pool_cb(asset_dict, key, value):
                 asset_dict[key] = value
@@ -145,8 +156,8 @@ def main(args):
     logging.debug("Producing final asset bundle...")
     with _utils.OutputManager(pathlib.Path(args.destination)) as outfile:
         for asset_category, assets in output.items():
-            src_subdir = _utils.client_subdirectories[asset_category]
-            dest_subdir = _utils.asset_subdirectories[asset_category]
+            src_subdir = client_subdirectories[asset_category]
+            dest_subdir = asset_subdirectories[asset_category]
             for asset_filename, asset_dict in assets.items():
                 asset_dict["source"] = str(pathlib.PureWindowsPath(dest_subdir, asset_filename))
                 asset_source_path = make_asset_path(args, asset_category, asset_filename)

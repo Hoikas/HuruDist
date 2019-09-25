@@ -16,24 +16,6 @@
 import shutil
 import zipfile
 
-client_subdirectories = {
-    "artifacts": "",
-    "avi": "avi",
-    "data": "dat",
-    "python": "Python",
-    "sdl": "SDL",
-    "sfx": "sfx",
-}
-
-asset_subdirectories = {
-    "artifacts": "Client",
-    "avi": "GameVideos",
-    "data": "GameData",
-    "python": "GameScripts",
-    "sdl": "GameState",
-    "sfx": "GameAudio",
-}
-
 def coerce_asset_dicts(dicts):
     """Forcibly merges asset dicts, preserving only options keys"""
     output = {}
