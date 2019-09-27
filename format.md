@@ -65,11 +65,6 @@ The H'uru Asset Object replaces the string value from GatherBuild. Only the `sou
 - `redist` - *only valid for objects in the `artifacts` key*
 - `pfm` - *only valid for objects in the `python` key*
 
-## Optional
-`optional` represents a build-time flag for whether or not it is permissible for a file to be missing. Valid options are:
-- `true` - *The file may be omitted from the build without an error*
-- `false` - **DEFAULT** *The file ***may not*** be omitted from the build*
-
 ## Build Type
 `build_type` represents the client build type an `artifact` should be used in. This key is ignored outside of the `artifacts` key. Not specifying this key results in the asset being used for all build types. Valid options are:
 - `external`

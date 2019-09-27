@@ -57,10 +57,6 @@ def find_page_externals(path, dlevel=plDebug.kDLNone):
 
         "sfx": { i.object.fileName: { "options": list(sfx_flags_as_str(i.object.flags)) }
                  for i in mgr.getKeys(location, sfx_idx) },
-
-        # OK, so, this is highly speculative... Don't die if they don't exist.
-        "sdl": { f"{i.object.filename}.sdl": { "optional": True }
-                 for i in mgr.getKeys(location, pfm_idx) },
     }
 
     # I know this isn't pretty, deal with it.
@@ -101,6 +97,46 @@ def find_python_dependencies(py_exe, module_name, scripts_path):
             logging.warning(f"Python module {module_name} could not be found.")
         else:
             logging.warning(f"Unhandled error {result.returncode} when importing Python module {module_name}.\n{result.stdout}")
+
+def find_sdl_depdendencies(sdl_mgrs, descriptor_name, embedded_sdr=False):
+    dependencies = set()
+    descriptors = set()
+
+    for sdl_file, mgr in sdl_mgrs.items():
+        descriptor = mgr.getDescriptor(descriptor_name)
+        if descriptor is not None:
+            break
+    else:
+        if embedded_sdr:
+            logging.error(f"Embedded SDL Descriptor '{descriptor_name}' is missing from the client.")
+        else:
+            logging.debug(f"Python SDL '{descriptor_name}' is not present.")
+        return dependencies, descriptors
+
+    dependencies.add(sdl_file)
+    descriptors.add(descriptor.name)
+
+    # We need to see if there are any embedded state descriptor variables...
+    for variable in descriptor.variables:
+        if variable.type == plVarDescriptor.kStateDescriptor and not variable.stateDescType in descriptors:
+            more_dependencies, more_descriptors = find_sdl_depdendencies(sdl_mgrs, variable.stateDescType, True)
+            dependencies.update(more_dependencies)
+            descriptors.update(more_descriptors)
+    return dependencies, descriptors
+
+def load_sdl_descriptors(sdl_path):
+    sdl_mgrs = {}
+    for sdl_file in sdl_path.glob("*.sdl"):
+        # Strictly speaking, due to the configurable nature of the key, btea/notthedroids encrypted
+        # SDL files are not allowed here. So, let's detect that.
+        if plEncryptedStream.IsFileEncrypted(str(sdl_file)):
+            logging.error("SDL File '{sdl_file.name}' is encrypted and cannot be used for packaging.")
+            continue
+
+        mgr = plSDLMgr()
+        mgr.readDescriptors(str(sdl_file))
+        sdl_mgrs[sdl_file.name] = mgr
+    return sdl_mgrs
 
 def log_exception(ex):
     logging.exception(ex)
@@ -161,6 +197,21 @@ def main(args):
     logging.info(f"Merging results from {len(results)} dependency lists...")
     output = _utils.coerce_asset_dicts(results)
 
+    # Any PFM may also have an associated SDL descriptor.
+    sdl_path = (args.moul_scripts if args.moul_scripts else args.source).joinpath("SDL")
+    if sdl_path.exists():
+        logging.info("Searching for PythonFileMod SDL Descriptors...")
+        sdl_mgrs = load_sdl_descriptors(sdl_path)
+        sdl_file_names = set()
+        for py_file_name, py_file_dict in output.get("python", {}).items():
+            if not "pfm" in py_file_dict.get("options", []):
+                continue
+            more_sdl_files, _ = find_sdl_depdendencies(sdl_mgrs, pathlib.Path(py_file_name).stem)
+            sdl_file_names.update(more_sdl_files)
+        for sdl_file_name in sdl_file_names:
+            sdl_dict = output.setdefault("sdl", {})
+            sdl_dict[sdl_file_name] = {}
+
     # Now we have all of this age's PythonFileMod scripts. However, those scripts in turn may
     # depend on other python modules, so we need to look for them.
     py_exe = args.python if args.python else _utils.find_python_exe()
@@ -181,10 +232,7 @@ def main(args):
     if age_info.seqPrefix > 0:
         data[f"{args.age_name}.fni"] = {}
 
-    # OK, now everything is (mostly) sane. Only exception is that find_page_external gives us a ton
-    # of "suggestions" for which SDL files we may want. These files may or may not exist. Further,
-    # we might be in some weird ass-environment where the other dependencies (py, ogg) don't exist.
-    # So, let's handle that now.
+    # OK, now everything is (mostly) sane.
     missing_assets = []
     logging.info("Beginning final pass over assets...")
     for asset_category, assets in output.items():
@@ -192,10 +240,7 @@ def main(args):
             asset_source_path = make_asset_path(args, asset_category, asset_filename)
             if not asset_source_path.exists():
                 missing_assets.append((asset_category, asset_filename))
-                if asset_dict.get("optional", False):
-                    logging.debug(f"Unable to locate optional asset '{asset_source_path.name}'.")
-                else:
-                    logging.warning(f"Asset '{asset_source_path.name}' is missing from the client.")
+                logging.warning(f"Asset '{asset_source_path.name}' is missing from the client.")
                 continue
 
             # Fill in some information from the filesystem.
