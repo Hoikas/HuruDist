@@ -43,12 +43,15 @@ if __name__ == "__main__":
     # Commands are just modules with a main() function
     module_name = commands[args.command]
     module = importlib.import_module(module_name)
-    result = module.main(args)
-
-    end_time = time.perf_counter()
-    delta = end_time - start_time
-
-    if not result:
-        logging.error(f"H'uru Distribution Manager exiting with errors in {delta:.2f}s.")
-    else:
-        logging.info(f"H'uru Distribution Manager completed successfully in {delta:.2f}s.")
+    try:
+        result = module.main(args)
+    except Exception as e:
+        result = False
+        logging.exception(e)
+    finally:
+        end_time = time.perf_counter()
+        delta = end_time - start_time
+        if not result:
+            logging.error(f"H'uru Distribution Manager exiting with errors in {delta:.2f}s.")
+        else:
+            logging.info(f"H'uru Distribution Manager completed successfully in {delta:.2f}s.")
