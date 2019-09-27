@@ -14,6 +14,7 @@
 #    along with HuruDist.  If not, see <http://www.gnu.org/licenses/>.
 
 import enum
+import _py2constants
 
 client_subdirectories = {
     "artifacts": "",
@@ -32,6 +33,14 @@ asset_subdirectories = {
     "sdl": "GameState",
     "sfx": "GameAudio",
 }
+
+@enum.unique
+class PyToolsResultCodes(enum.IntEnum):
+    success = _py2constants.TOOLS_SUCCESS
+    tools_crashed = _py2constants.TOOLS_CRASHED
+    invalid_command = _py2constants.TOOLS_INVALID_COMMAND
+    traceback = _py2constants.TOOLS_MODULE_TRACEBACK
+    file_not_found = _py2constants.TOOLS_FILE_NOT_FOUND
 
 class _ArgParseEnum:
     def __str__(self):

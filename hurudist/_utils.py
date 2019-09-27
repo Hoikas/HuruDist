@@ -13,7 +13,11 @@
 #    You should have received a copy of the GNU General Public License
 #    along with HuruDist.  If not, see <http://www.gnu.org/licenses/>.
 
+import logging
+import pathlib
 import shutil
+import subprocess
+import sys
 import zipfile
 
 def coerce_asset_dicts(dicts):
@@ -32,6 +36,52 @@ def coerce_asset_dicts(dicts):
                         new_options.update(dependency_dict.get("options", []))
                         output_dict["options"] = list(new_options)
     return output
+
+def find_python_exe(major=2, minor=7):
+    def _find_python_reg(py_version):
+        import winreg
+        subkey_name = "Software\\Python\\PythonCore\\{}.{}\\InstallPath".format(*py_version)
+        for reg_key in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            try:
+                python_dir = winreg.QueryValue(reg_key, subkey_name)
+            except FileNotFoundError:
+                continue
+            else:
+                return pathlib.Path(python_dir, "python.exe")
+        return None
+
+    # Maybe, someday, this will be true...
+    if sys.version_info[:2] == (major, minor):
+        return sys.executable
+
+    # If we're on Windows, we can try looking in the registry...
+    if sys.platform == "win32":
+        py_exe = None
+        for i in range(minor, 0, -1):
+            py_exe = _find_python_reg((major, i))
+            if py_exe:
+                logging.debug(f"Found Python {major}.{i}: {py_exe}")
+                return py_exe
+
+    # Ok, now we try using some posix junk...
+    args = ("command", "-v", f"python{major}.{minor}")
+    result = subprocess.run(args, stdout=subprocess.PIPE, encoding="utf-8")
+    if result.returncode == 0:
+        logging.debug(f"Found Python {major}.{minor}: {result.stdout}")
+        return result.stdout
+    args = ("command", "-v", f"python{major}")
+    result = subprocess.run(args, stdout=subprocess.PIPE, encoding="utf-8")
+    if result.returncode == 0:
+        logging.debug(f"Found Python {major}: {result.stdout}")
+        return result.stdout
+
+    # You win, I give up.
+    logging.error(f"Could not find Python {major} interpreter.")
+    return None
+
+def find_python2_tools():
+    tools_path = pathlib.Path(__file__).parent.joinpath("_py2tools.py")
+    return tools_path
 
 class OutputManager:
     def __init__(self, path):

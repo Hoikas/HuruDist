@@ -15,10 +15,12 @@
 
 from _constants import *
 import functools
+import io
 import logging
 import multiprocessing, multiprocessing.pool
 import pathlib
 from PyHSPlasma import *
+import subprocess
 import _utils
 import _workers
 
@@ -27,6 +29,39 @@ try:
     from yaml import CDumper as Dumper
 except ImportError:
     from yaml import Dumper
+
+def find_python_dependencies(py_exe, module_name, scripts_path):
+    assert py_exe is not None
+
+    plasma_python_path = scripts_path.joinpath("plasma")
+    args = (str(py_exe), str(_utils.find_python2_tools()), "get_imports", str(module_name),
+            str(scripts_path), str(plasma_python_path))
+    result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8")
+    if result.returncode == PyToolsResultCodes.success:
+        with io.StringIO(result.stdout) as strio:
+            for py_abs_path in strio:
+                module_path = pathlib.Path(py_abs_path.rstrip())
+
+                # Don't include any of the builtin engine-level code in python/plasma
+                try:
+                    module_path.relative_to(plasma_python_path)
+                except ValueError:
+                    pass
+                else:
+                    continue
+                try:
+                    module_path = module_path.relative_to(scripts_path)
+                except ValueError:
+                    continue
+                else:
+                    yield str(module_path)
+    else:
+        if result.returncode == PyToolsResultCodes.traceback:
+            logging.error(f"Python module {module_name} failed to import\n{result.stdout}.")
+        elif result.returncode == PyToolsResultCodes.file_not_found:
+            logging.warning(f"Python module {module_name} could not be found.")
+        else:
+            logging.warning(f"Unhandled error {result.returncode} when importing Python module {module_name}.\n{result.stdout}")
 
 def log_exception(ex):
     logging.exception(ex)
@@ -87,6 +122,18 @@ def main(args):
     logging.info(f"Merging results from {len(results)} dependency lists...")
     output = _utils.coerce_asset_dicts(results)
 
+    # Now we have all of this age's PythonFileMod scripts. However, those scripts in turn may
+    # depend on other python modules, so we need to look for them.
+    py_exe = args.python if args.python else _utils.find_python_exe()
+    if py_exe:
+        python_path = (args.moul_scripts if args.moul_scripts else args.source).joinpath("Python")
+        known_python_files = tuple(output.get("python", {}).keys())
+        for py_file_name in known_python_files:
+            for i in find_python_dependencies(py_exe, pathlib.Path(py_file_name).stem, python_path):
+                output["python"].setdefault(i, {})
+    else:
+        logging.warning("Age Python may not be completely bundled!")
+
     # Add in the .age, .fni, and .prp files. Note that the .csv is detected as a dependency.
     data = output.setdefault("data", {})
     for i in all_pages:
@@ -119,12 +166,7 @@ def main(args):
 
             # Command line specs
             asset_dict["dataset"] = args.dataset.name
-            if args.distribute is None:
-                if args.dataset == Dataset.cyan:
-                    asset_dict["distribute"] = Distribute.false.name
-                else:
-                    asset_dict["distribute"] = Distribute.true.name
-            else:
+            if args.distribute is not None:
                 asset_dict["distribute"] = args.distribute.name
 
             # Now we submit slow operations to the process pool.

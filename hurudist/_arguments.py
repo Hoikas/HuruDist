@@ -37,3 +37,4 @@ age_parser.add_argument("--dataset", type=lambda x: Dataset[x], default=Dataset.
 age_parser.add_argument("--distribute", type=lambda x: Distribute[x], choices=list(Distribute),
                         help="Ability to redistribute this asset package")
 age_parser.add_argument("--moul-scripts", type=Path, help="Path to the moul-scripts repository for this client")
+age_parser.add_argument("--python", type=Path, help="Path to the python interpreter executable used by this client")

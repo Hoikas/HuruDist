@@ -13,8 +13,8 @@
 #    You should have received a copy of the GNU General Public License
 #    along with HuruDist.  If not, see <http://www.gnu.org/licenses/>.
 
+from _constants import *
 import hashlib
-import pathlib
 from PyHSPlasma import *
 
 _BUFFER_SIZE = 10 * 1024 * 1024
