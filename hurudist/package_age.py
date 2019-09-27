@@ -22,13 +22,52 @@ import pathlib
 from PyHSPlasma import *
 import subprocess
 import _utils
-import _workers
 
-from yaml import load, dump
+from yaml import dump
 try:
     from yaml import CDumper as Dumper
 except ImportError:
     from yaml import Dumper
+
+def find_page_externals(path, dlevel=plDebug.kDLNone):
+    # Optimization: Textures.prp does not have any externals...
+    if path.name.endswith("Textures.prp"):
+        return {}
+
+    plDebug.Init(dlevel)
+    mgr = plResManager()
+    page_info = mgr.ReadPage(str(path))
+    location = page_info.location
+
+    def sfx_flags_as_str(flags):
+        if flags & plSoundBuffer.kStreamCompressed:
+            yield "sound_stream"
+        else:
+            if flags & plSoundBuffer.kOnlyLeftChannel or flags & plSoundBuffer.kOnlyRightChannel:
+                yield "sound_cache_split"
+            else:
+                yield "sound_cache_stereo"
+
+    sfx_idx = plFactory.ClassIndex("plSoundBuffer")
+    pfm_idx = plFactory.ClassIndex("plPythonFileMod")
+
+    result = {
+        "python": { f"{i.object.filename}.py": { "options": ["pfm"] }
+                    for i in mgr.getKeys(location, pfm_idx) },
+
+        "sfx": { i.object.fileName: { "options": list(sfx_flags_as_str(i.object.flags)) }
+                 for i in mgr.getKeys(location, sfx_idx) },
+
+        # OK, so, this is highly speculative... Don't die if they don't exist.
+        "sdl": { f"{i.object.filename}.sdl": { "optional": True }
+                 for i in mgr.getKeys(location, pfm_idx) },
+    }
+
+    # I know this isn't pretty, deal with it.
+    if mgr.getKeys(location, plFactory.ClassIndex("plRelevanceRegion")):
+        result["data"] = { f"{page_info.age}.csv": { } }
+
+    return result
 
 def find_python_dependencies(py_exe, module_name, scripts_path):
     assert py_exe is not None
@@ -115,7 +154,7 @@ def main(args):
     dlevel = plDebug.kDLWarning if args.verbose else plDebug.kDLNone
     iterable = [(i, dlevel) for i in all_pages]
     pool = multiprocessing.pool.Pool()
-    results = pool.starmap(_workers.find_page_externals, iterable)
+    results = pool.starmap(find_page_externals, iterable)
 
     # What we have now is a list of dicts, each nearly obeying the output format spec.
     # Now, we have to merge them... ugh.
@@ -175,9 +214,9 @@ def main(args):
             md5_complete = functools.partial(pool_cb, asset_dict, "hash_md5")
             sha2_complete = functools.partial(pool_cb, asset_dict, "hash_sha2")
 
-            pool.apply_async(_workers.hash_md5, (asset_source_path,),
+            pool.apply_async(_utils.hash_md5, (asset_source_path,),
                              callback=md5_complete, error_callback=log_exception)
-            pool.apply_async(_workers.hash_sha2, (asset_source_path,),
+            pool.apply_async(_utils.hash_sha2, (asset_source_path,),
                              callback=sha2_complete, error_callback=log_exception)
 
     # Discard any missing thingos from our asset map and it will be very nearly final.

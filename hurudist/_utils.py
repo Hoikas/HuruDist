@@ -13,12 +13,15 @@
 #    You should have received a copy of the GNU General Public License
 #    along with HuruDist.  If not, see <http://www.gnu.org/licenses/>.
 
+import hashlib
 import logging
 import pathlib
 import shutil
 import subprocess
 import sys
 import zipfile
+
+_BUFFER_SIZE = 10 * 1024 * 1024
 
 def coerce_asset_dicts(dicts):
     """Forcibly merges asset dicts, preserving only options keys"""
@@ -82,6 +85,23 @@ def find_python_exe(major=2, minor=7):
 def find_python2_tools():
     tools_path = pathlib.Path(__file__).parent.joinpath("_py2tools.py")
     return tools_path
+
+def _hash(path, hashobj):
+    stat = path.stat()
+    with open(path, "rb") as stream:
+        if stat.st_size < _BUFFER_SIZE:
+            hashobj.update(stream.read())
+        else:
+            buf = bytearray(_BUFFER_SIZE)
+            while stream.readinto(buf):
+                hashobj.update(buf)
+    return hashobj.hexdigest()
+
+def hash_md5(path):
+    return _hash(path, hashlib.md5())
+
+def hash_sha2(path):
+    return _hash(path, hashlib.sha512())
 
 class OutputManager:
     def __init__(self, path):
