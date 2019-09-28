@@ -141,15 +141,15 @@ def load_sdl_descriptors(sdl_path):
 def log_exception(ex):
     logging.exception(ex)
 
-def make_asset_path(args, asset_category, asset_filename):
+def make_asset_path(args, asset_category, *filename_pieces):
     subdir = client_subdirectories[asset_category]
 
     # If this is a Python or SDL file, we will allow usage of a specified moul-scripts repo...
     # We avoid doing this for .age, .fni, and .csv due to the un-WDYS'd nature of those files.
     if asset_category in {"python", "sdl"} and args.moul_scripts:
-        return args.moul_scripts.joinpath(subdir, asset_filename)
+        return args.moul_scripts.joinpath(subdir, *filename_pieces)
     else:
-        return args.source.joinpath(subdir, asset_filename)
+        return args.source.joinpath(subdir, *filename_pieces)
 
 def main(args):
     client_path = args.source
@@ -198,7 +198,7 @@ def main(args):
     output = _utils.coerce_asset_dicts(results)
 
     # Any PFM may also have an associated SDL descriptor.
-    sdl_path = (args.moul_scripts if args.moul_scripts else args.source).joinpath("SDL")
+    sdl_path = make_asset_path(args, "sdl")
     if sdl_path.exists():
         logging.info("Searching for PythonFileMod SDL Descriptors...")
         sdl_mgrs = load_sdl_descriptors(sdl_path)
@@ -216,7 +216,7 @@ def main(args):
     # depend on other python modules, so we need to look for them.
     py_exe = args.python if args.python else _utils.find_python_exe()
     if py_exe:
-        python_path = (args.moul_scripts if args.moul_scripts else args.source).joinpath("Python")
+        python_path = make_asset_path(args, "python")
         known_python_files = tuple(output.get("python", {}).keys())
         for py_file_name in known_python_files:
             for i in find_python_dependencies(py_exe, pathlib.Path(py_file_name).stem, python_path):
