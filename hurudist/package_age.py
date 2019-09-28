@@ -189,8 +189,8 @@ def main(args):
     # do any of that. So, we will execute this part in a process pool.
     dlevel = plDebug.kDLWarning if args.verbose else plDebug.kDLNone
     iterable = [(i, dlevel) for i in all_pages]
-    pool = multiprocessing.pool.Pool()
-    results = pool.starmap(find_page_externals, iterable)
+    with multiprocessing.pool.Pool() as pool:
+        results = pool.starmap(find_page_externals, iterable)
 
     # What we have now is a list of dicts, each nearly obeying the output format spec.
     # Now, we have to merge them... ugh.
@@ -224,56 +224,49 @@ def main(args):
     else:
         logging.warning("Age Python may not be completely bundled!")
 
-    # Add in the .age, .fni, and .prp files. Note that the .csv is detected as a dependency.
-    data = output.setdefault("data", {})
-    for i in all_pages:
-        data[str(i.relative_to(dat_path))] = {}
-    data[f"{args.age_name}.age"] = {}
-    if age_info.seqPrefix > 0:
-        data[f"{args.age_name}.fni"] = {}
-
     # OK, now everything is (mostly) sane.
     missing_assets = []
     logging.info("Beginning final pass over assets...")
-    for asset_category, assets in output.items():
-        for asset_filename, asset_dict in assets.items():
-            asset_source_path = make_asset_path(args, asset_category, asset_filename)
-            if not asset_source_path.exists():
-                missing_assets.append((asset_category, asset_filename))
-                logging.warning(f"Asset '{asset_source_path.name}' is missing from the client.")
-                continue
+    with multiprocessing.pool.Pool() as pool:
+        for asset_category, assets in output.items():
+            for asset_filename, asset_dict in assets.items():
+                asset_source_path = make_asset_path(args, asset_category, asset_filename)
+                if not asset_source_path.exists():
+                    missing_assets.append((asset_category, asset_filename))
+                    logging.warning(f"Asset '{asset_source_path.name}' is missing from the client.")
+                    continue
 
-            # Fill in some information from the filesystem.
-            stat = asset_source_path.stat()
-            asset_dict["modify_time"] = int(stat.st_mtime)
-            asset_dict["size"] = stat.st_size
+                # Fill in some information from the filesystem.
+                stat = asset_source_path.stat()
+                asset_dict["modify_time"] = int(stat.st_mtime)
+                asset_dict["size"] = stat.st_size
 
-            # Command line specs
-            asset_dict["dataset"] = args.dataset.name
-            if args.distribute is not None:
-                asset_dict["distribute"] = args.distribute.name
+                # Command line specs
+                asset_dict["dataset"] = args.dataset.name
+                if args.distribute is not None:
+                    asset_dict["distribute"] = args.distribute.name
 
-            # Now we submit slow operations to the process pool.
-            def pool_cb(asset_dict, key, value):
-                asset_dict[key] = value
-            md5_complete = functools.partial(pool_cb, asset_dict, "hash_md5")
-            sha2_complete = functools.partial(pool_cb, asset_dict, "hash_sha2")
+                # Now we submit slow operations to the process pool.
+                def pool_cb(asset_dict, key, value):
+                    asset_dict[key] = value
+                md5_complete = functools.partial(pool_cb, asset_dict, "hash_md5")
+                sha2_complete = functools.partial(pool_cb, asset_dict, "hash_sha2")
 
-            pool.apply_async(_utils.hash_md5, (asset_source_path,),
-                             callback=md5_complete, error_callback=log_exception)
-            pool.apply_async(_utils.hash_sha2, (asset_source_path,),
-                             callback=sha2_complete, error_callback=log_exception)
+                pool.apply_async(_utils.hash_md5, (asset_source_path,),
+                                 callback=md5_complete, error_callback=log_exception)
+                pool.apply_async(_utils.hash_sha2, (asset_source_path,),
+                                 callback=sha2_complete, error_callback=log_exception)
 
-    # Discard any missing thingos from our asset map and it will be very nearly final.
-    for asset_category, asset_filename in missing_assets:
-        output[asset_category].pop(asset_filename)
-    for asset_category in tuple(output.keys()):
-        if not output[asset_category]:
-            output.pop(asset_category)
+        # Discard any missing thingos from our asset map and it will be very nearly final.
+        for asset_category, asset_filename in missing_assets:
+            output[asset_category].pop(asset_filename)
+        for asset_category in tuple(output.keys()):
+            if not output[asset_category]:
+                output.pop(asset_category)
 
-    # Wait for the pool to finish
-    pool.close()
-    pool.join()
+        # Wait for the pool to finish
+        pool.close()
+        pool.join()
 
     # Time to produce the bundle
     logging.info("Producing final asset bundle...")
