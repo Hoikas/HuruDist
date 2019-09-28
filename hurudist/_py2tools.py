@@ -24,7 +24,7 @@ def get_imports(py_module_name, *module_paths):
     # This could be done in an environment variable, but that seems kind of nasty.
     sys.path.extend(module_paths)
 
-    if sys.version[0] == 2:
+    if sys.version_info[0] == 2:
         import imp
 
         py_module_tup = imp.find_module(py_module_name)
@@ -32,10 +32,12 @@ def get_imports(py_module_name, *module_paths):
             sys.exit(TOOLS_FILE_NOT_FOUND)
 
         try:
-            the_py_module = imp.load_module(py_module_name, *py_module_tup)
-        except:
-            sys.excepthook(*sys.exc_info())
-            sys.exit(TOOLS_MODULE_TRACEBACK)
+            # This is nested because try... except... finally was not possible until Python 2.5
+            try:
+                the_py_module = imp.load_module(py_module_name, *py_module_tup)
+            except:
+                sys.excepthook(*sys.exc_info())
+                sys.exit(TOOLS_MODULE_TRACEBACK)
         finally:
             py_module_tup[0].close()
     else:
