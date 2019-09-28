@@ -143,13 +143,13 @@ def log_exception(ex):
 
 def make_asset_path(args, asset_category, asset_filename):
     subdir = client_subdirectories[asset_category]
-    asset_source_path = args.source.joinpath(subdir, asset_filename)
 
-    # If this is a Python or SDL file, we will allow falling back to a specified moul-scripts repo...
+    # If this is a Python or SDL file, we will allow usage of a specified moul-scripts repo...
     # We avoid doing this for .age, .fni, and .csv due to the un-WDYS'd nature of those files.
-    if asset_category in {"python", "sdl"} and args.moul_scripts and not asset_source_path.exists():
-        asset_source_path = args.moul_scripts.joinpath(subdir, asset_filename)
-    return asset_source_path
+    if asset_category in {"python", "sdl"} and args.moul_scripts:
+        return args.moul_scripts.joinpath(subdir, asset_filename)
+    else:
+        return args.source.joinpath(subdir, asset_filename)
 
 def main(args):
     client_path = args.source
