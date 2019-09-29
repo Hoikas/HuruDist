@@ -38,3 +38,4 @@ age_parser.add_argument("--distribute", type=lambda x: Distribute[x], choices=li
                         help="Ability to redistribute this asset package")
 age_parser.add_argument("--moul-scripts", type=Path, help="Path to the moul-scripts repository for this client")
 age_parser.add_argument("--python", type=Path, help="Path to the python interpreter executable used by this client")
+age_parser.add_argument("--skip-pfm-dependencies", action="store_true", help="Don't include Python dependency modules and SDLs in this package")

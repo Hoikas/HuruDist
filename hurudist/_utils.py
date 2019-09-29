@@ -23,7 +23,7 @@ import zipfile
 
 _BUFFER_SIZE = 10 * 1024 * 1024
 
-def coerce_asset_dicts(dicts):
+def coerce_asset_dicts(*dicts):
     """Forcibly merges asset dicts, preserving only options keys"""
     output = {}
     for dependency_categories in dicts:

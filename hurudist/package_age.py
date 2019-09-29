@@ -29,6 +29,28 @@ try:
 except ImportError:
     from yaml import Dumper
 
+def find_all_pages(output, data_path, *age_infos):
+    # Collect a list of all age pages to be abused for the purpose of finding its resources
+    # Would be nice if this were a common function of libHSPlasma...
+    def _generate_page_paths(age_info):
+        for i in range(age_info.getNumPages()):
+            yield data_path.joinpath(age_info.getPageFilename(i, pvMoul))
+        for i in range(age_info.getNumCommonPages(pvMoul)):
+            yield data_path.joinpath(age_info.getCommonPageFilename(i, pvMoul))
+
+    data = output.setdefault("data", {})
+    for age_info in age_infos:
+        data[f"{age_info.name}.age"] = {}
+        if age_info.seqPrefix > 0:
+            data[f"{age_info.name}.fni"] = {}
+
+        for page_path in _generate_page_paths(age_info):
+            if page_path.exists():
+                data[str(page_path.relative_to(data_path))] = {}
+                yield page_path
+            else:
+                logging.warning(f"Age Page '{page_path.name}' is missing from the client...")
+
 def find_page_externals(path, dlevel=plDebug.kDLNone):
     # Optimization: Textures.prp does not have any externals...
     if path.name.endswith("Textures.prp"):
@@ -65,9 +87,41 @@ def find_page_externals(path, dlevel=plDebug.kDLNone):
 
     return result
 
-def find_python_dependencies(py_exe, module_name, scripts_path):
-    assert py_exe is not None
+def find_pfm_externals(output, py_exe, py_path, sdl_path):
+    def pool_cb(output, asset_category, source_path, asset_paths):
+        for asset_path in asset_paths:
+            asset_key = str(asset_path.relative_to(source_path))
+            output.setdefault(asset_category, {}).setdefault(asset_key, {})
 
+    with multiprocessing.pool.Pool(processes=2) as pool:
+        pfm_names = [pathlib.Path(i).stem for i in output.get("python", {}).keys()]
+        py_cb = functools.partial(pool_cb, output, "python", py_path)
+        sdl_cb = functools.partial(pool_cb, output, "sdl", sdl_path)
+
+        pool.apply_async(find_pfm_sdlmods, (sdl_path, pfm_names),
+                         callback=sdl_cb, error_callback=log_exception)
+        pool.apply_async(find_pfm_dependency_pymodules, (py_exe, py_path, pfm_names),
+                         callback=py_cb, error_callback=log_exception)
+
+        # Ensure all jobs finish
+        pool.close()
+        pool.join()
+
+def find_pfm_sdlmods(source_path, pfm_names):
+    sdl_mgrs = load_sdl_descriptors(source_path)
+    sdl_file_names = set()
+    for py_module_name in pfm_names:
+        more_sdl_files, _ = find_sdl_depdendencies(sdl_mgrs, py_module_name)
+        sdl_file_names.update(more_sdl_files)
+    return tuple(sdl_file_names)
+
+def find_pfm_dependency_pymodules(py_exe, source_path, pfm_names):
+    module_names = set()
+    for py_module_name in pfm_names:
+        module_names.update(find_python_dependencies(py_exe, py_module_name, source_path))
+    return tuple(module_names)
+
+def find_python_dependencies(py_exe, module_name, scripts_path):
     plasma_python_path = scripts_path.joinpath("plasma")
     args = (str(py_exe), str(_utils.find_python2_tools()), "get_imports", str(module_name),
             str(scripts_path), str(plasma_python_path))
@@ -83,13 +137,7 @@ def find_python_dependencies(py_exe, module_name, scripts_path):
                 except ValueError:
                     pass
                 else:
-                    continue
-                try:
-                    module_path = module_path.relative_to(scripts_path)
-                except ValueError:
-                    continue
-                else:
-                    yield str(module_path)
+                    yield module_path
     else:
         if result.returncode == PyToolsResultCodes.traceback:
             logging.error(f"Python module {module_name} failed to import\n{result.stdout}.")
@@ -124,6 +172,19 @@ def find_sdl_depdendencies(sdl_mgrs, descriptor_name, embedded_sdr=False):
             descriptors.update(more_descriptors)
     return dependencies, descriptors
 
+def load_age(age_path):
+    if not age_path.exists():
+        logging.critical(f"Age file '{age_path}' does not exist.")
+        return None
+
+    age_info = plAgeInfo()
+    try:
+        age_info.readFromFile(str(age_path))
+    except IOError as ex:
+        logging.exception(ex)
+        return False
+    return age_info
+
 def load_sdl_descriptors(sdl_path):
     sdl_mgrs = {}
     for sdl_file in sdl_path.glob("*.sdl"):
@@ -135,102 +196,46 @@ def load_sdl_descriptors(sdl_path):
 
         mgr = plSDLMgr()
         mgr.readDescriptors(str(sdl_file))
-        sdl_mgrs[sdl_file.name] = mgr
+        sdl_mgrs[sdl_file] = mgr
     return sdl_mgrs
 
 def log_exception(ex):
     logging.exception(ex)
 
-def make_asset_path(args, asset_category, *filename_pieces):
+def make_asset_path(asset_category, *filename_pieces, **kwargs):
     subdir = client_subdirectories[asset_category]
 
     # If this is a Python or SDL file, we will allow usage of a specified moul-scripts repo...
     # We avoid doing this for .age, .fni, and .csv due to the un-WDYS'd nature of those files.
-    if asset_category in {"python", "sdl"} and args.moul_scripts:
-        return args.moul_scripts.joinpath(subdir, *filename_pieces)
+    if asset_category in {"python", "sdl"} and "scripts_path" in kwargs:
+        return kwargs["scripts_path"].joinpath(subdir, *filename_pieces)
     else:
-        return args.source.joinpath(subdir, *filename_pieces)
+        return kwargs["client_path"].joinpath(subdir, *filename_pieces)
 
-def main(args):
-    client_path = args.source
-    dat_path = args.source.joinpath("dat")
-    age_path = dat_path.joinpath(f"{args.age_name}.age")
-    if not age_path.exists():
-        logging.critical(f"Age file '{age_path}' does not exist.")
-        return False
+def output_package(output, client_path, scripts_path, destination_path):
+    with _utils.OutputManager(destination_path) as outfile:
+        for asset_category, assets in output.items():
+            src_subdir = client_subdirectories[asset_category]
+            dest_subdir = asset_subdirectories[asset_category]
+            for asset_filename, asset_dict in assets.items():
+                asset_dict["source"] = str(pathlib.PureWindowsPath(dest_subdir, asset_filename))
+                asset_source_path = make_asset_path(asset_category, asset_filename,
+                                                    client_path=client_path, scripts_path=scripts_path)
+                asset_dest_path = pathlib.Path(dest_subdir, asset_filename)
+                outfile.copy_file(asset_source_path, asset_dest_path)
 
-    if args.moul_scripts and not args.moul_scripts.exists():
-        logging.error(f"Script path '{args.moul_scripts}' does not exist.")
+        logging.info("Writing bundle YAML...")
+        outfile.write_file("Contents.yml", dump(output, indent=4, Dumper=Dumper))
 
-    age_info = plAgeInfo()
-    try:
-        age_info.readFromFile(str(age_path))
-    except IOError as ex:
-        logging.exception(ex)
-        return False
 
-    # Collect a list of all age pages to be abused for the purpose of finding its resources
-    # Would be nice if this were a common function of libHSPlasma...
-    room_pages = [dat_path / age_info.getPageFilename(i, pvMoul) for i in range(age_info.getNumPages())]
-    common_pages = [dat_path / age_info.getCommonPageFilename(i, pvMoul) for i in range(age_info.getNumCommonPages(pvMoul))]
-    all_pages = set(room_pages + common_pages)
-    missing_pages = set()
-    logging.info(f"Found {len(all_pages)} Plasma pages.")
-
-    # Before we begin, check against the file system to see what files are available.
-    for page in all_pages:
-        if not page.exists():
-            logging.warning(f"Age Page '{page.name}' is missing from the client...")
-            missing_pages.add(page)
-    all_pages -= missing_pages
-
-    # We want to get the age dependency data. Presently, those are the python and ogg files.
-    # Unfortunately, libHSPlasma insists on reading in the entire page before allowing us to
-    # do any of that. So, we will execute this part in a process pool.
-    dlevel = plDebug.kDLWarning if args.verbose else plDebug.kDLNone
-    iterable = [(i, dlevel) for i in all_pages]
+def prepare_package(output, client_path, scripts_path, **kwargs):
     with multiprocessing.pool.Pool() as pool:
-        results = pool.starmap(find_page_externals, iterable)
-
-    # What we have now is a list of dicts, each nearly obeying the output format spec.
-    # Now, we have to merge them... ugh.
-    logging.info(f"Merging results from {len(results)} dependency lists...")
-    output = _utils.coerce_asset_dicts(results)
-
-    # Any PFM may also have an associated SDL descriptor.
-    sdl_path = make_asset_path(args, "sdl")
-    if sdl_path.exists():
-        logging.info("Searching for PythonFileMod SDL Descriptors...")
-        sdl_mgrs = load_sdl_descriptors(sdl_path)
-        sdl_file_names = set()
-        for py_file_name, py_file_dict in output.get("python", {}).items():
-            if not "pfm" in py_file_dict.get("options", []):
-                continue
-            more_sdl_files, _ = find_sdl_depdendencies(sdl_mgrs, pathlib.Path(py_file_name).stem)
-            sdl_file_names.update(more_sdl_files)
-        for sdl_file_name in sdl_file_names:
-            sdl_dict = output.setdefault("sdl", {})
-            sdl_dict[sdl_file_name] = {}
-
-    # Now we have all of this age's PythonFileMod scripts. However, those scripts in turn may
-    # depend on other python modules, so we need to look for them.
-    py_exe = args.python if args.python else _utils.find_python_exe()
-    if py_exe:
-        python_path = make_asset_path(args, "python")
-        known_python_files = tuple(output.get("python", {}).keys())
-        for py_file_name in known_python_files:
-            for i in find_python_dependencies(py_exe, pathlib.Path(py_file_name).stem, python_path):
-                output["python"].setdefault(i, {})
-    else:
-        logging.warning("Age Python may not be completely bundled!")
-
-    # OK, now everything is (mostly) sane.
-    missing_assets = []
-    logging.info("Beginning final pass over assets...")
-    with multiprocessing.pool.Pool() as pool:
+        missing_assets = []
         for asset_category, assets in output.items():
             for asset_filename, asset_dict in assets.items():
-                asset_source_path = make_asset_path(args, asset_category, asset_filename)
+                asset_source_path = make_asset_path(asset_category, asset_filename,
+                                                    client_path=client_path,
+                                                    scripts_path=scripts_path)
                 if not asset_source_path.exists():
                     missing_assets.append((asset_category, asset_filename))
                     logging.warning(f"Asset '{asset_source_path.name}' is missing from the client.")
@@ -242,9 +247,9 @@ def main(args):
                 asset_dict["size"] = stat.st_size
 
                 # Command line specs
-                asset_dict["dataset"] = args.dataset.name
-                if args.distribute is not None:
-                    asset_dict["distribute"] = args.distribute.name
+                for key, value in kwargs.items():
+                    if value is not None:
+                        asset_dict[key] = str(value)
 
                 # Now we submit slow operations to the process pool.
                 def pool_cb(asset_dict, key, value):
@@ -268,19 +273,53 @@ def main(args):
         pool.close()
         pool.join()
 
+        return not bool(missing_assets)
+
+
+def main(args):
+    if args.moul_scripts and not args.moul_scripts.exists():
+        logging.error(f"Scripts path '{args.moul_scripts}' does not exist.")
+        return False
+
+    age_info = load_age(make_asset_path("data", f"{args.age_name}.age", client_path=args.source))
+    if age_info is None:
+        return False
+
+    # Collect a list of all age pages to be abused for the purpose of finding its resources
+    # Would be nice if this were a common function of libHSPlasma...
+    output = {}
+    dlevel = plDebug.kDLWarning if args.verbose else plDebug.kDLNone
+    all_pages = [(i, dlevel) for i in find_all_pages(output, make_asset_path("data", client_path=args.source), age_info)]
+    logging.info(f"Found {len(all_pages)} Plasma pages.")
+
+    # We want to get the age dependency data. Presently, those are the python and ogg files.
+    # Unfortunately, libHSPlasma insists on reading in the entire page before allowing us to
+    # do any of that. So, we will execute this part in a process pool.
+    with multiprocessing.pool.Pool() as pool:
+        results = pool.starmap(find_page_externals, all_pages)
+
+    # What we have now is a list of dicts, each nearly obeying the output format spec.
+    # Now, we have to merge them... ugh.
+    logging.info(f"Merging results from {len(results)} dependency lists...")
+    output = _utils.coerce_asset_dicts(output, *results)
+
+    # PythonFileMods can import other python modules and be a STATEDESC
+    if not args.skip_pfm_dependencies:
+        py_exe = args.python if args.python else _utils.find_python_exe()
+        if not py_exe:
+            logging.critical("Uru-compatible python interpreter unavailable.")
+            return False
+        logging.info("Searching for PythonFileMod dependencies...")
+        find_pfm_externals(output, py_exe,
+                           make_asset_path("python", client_path=args.source, scripts_path=args.moul_scripts),
+                           make_asset_path("sdl", client_path=args.source, scripts_path=args.moul_scripts))
+
+    # OK, now everything is (mostly) sane.
+    logging.info("Beginning final pass over assets...")
+    prepare_package(output, args.source, args.moul_scripts, dataset=args.dataset, distribute=args.distribute)
+
     # Time to produce the bundle
     logging.info("Producing final asset bundle...")
-    with _utils.OutputManager(args.destination) as outfile:
-        for asset_category, assets in output.items():
-            src_subdir = client_subdirectories[asset_category]
-            dest_subdir = asset_subdirectories[asset_category]
-            for asset_filename, asset_dict in assets.items():
-                asset_dict["source"] = str(pathlib.PureWindowsPath(dest_subdir, asset_filename))
-                asset_source_path = make_asset_path(args, asset_category, asset_filename)
-                asset_dest_path = pathlib.Path(dest_subdir, asset_filename)
-                outfile.copy_file(asset_source_path, asset_dest_path)
-
-        logging.info("Writing bundle YAML...")
-        outfile.write_file("Contents.yml", dump(output, indent=4, Dumper=Dumper))
+    output_package(output, args.source, args.moul_scripts, args.destination)
 
     return True
