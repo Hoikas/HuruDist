@@ -207,7 +207,7 @@ def make_asset_path(asset_category, *filename_pieces, **kwargs):
 
     # If this is a Python or SDL file, we will allow usage of a specified moul-scripts repo...
     # We avoid doing this for .age, .fni, and .csv due to the un-WDYS'd nature of those files.
-    if asset_category in {"python", "sdl"} and "scripts_path" in kwargs:
+    if asset_category in {"python", "sdl"} and kwargs.get("scripts_path", None):
         return kwargs["scripts_path"].joinpath(subdir, *filename_pieces)
     else:
         return kwargs["client_path"].joinpath(subdir, *filename_pieces)
