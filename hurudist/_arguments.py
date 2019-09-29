@@ -27,11 +27,11 @@ log_group.add_argument("-v", "--verbose", action="store_true", help="print verbo
 sub_parsers = main_parser.add_subparsers(title="Command", dest="command", required=True)
 
 # Package age command argment parser
-age_parser = sub_parsers.add_parser("age")
-age_parser.add_argument("age_name", type=str, help="name of the age to bundle")
+age_parser = sub_parsers.add_parser("package")
 age_parser.add_argument("source", type=Path, help="path to the root of the Plasma client")
 age_parser.add_argument("destination", type=Path, help="path to store the resulting asset bundle")
 
+age_parser.add_argument("--age", type=str, help="package only this age")
 age_parser.add_argument("--dataset", type=lambda x: Dataset[x], default=Dataset.base, choices=list(Dataset),
                         help="dataset this age belongs to")
 age_parser.add_argument("--distribute", type=lambda x: Distribute[x], choices=list(Distribute),

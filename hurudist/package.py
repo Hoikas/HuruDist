@@ -281,15 +281,26 @@ def main(args):
         logging.error(f"Scripts path '{args.moul_scripts}' does not exist.")
         return False
 
-    age_info = load_age(make_asset_path("data", f"{args.age_name}.age", client_path=args.source))
-    if age_info is None:
-        return False
+    if args.age:
+        age_info = load_age(make_asset_path("data", f"{args.age_name}.age", client_path=args.source))
+        if age_info is None:
+            return False
+        age_infos = (age_info,)
+    else:
+        logging.info("Loading age files...")
+        age_source_path = make_asset_path("data", client_path=args.source)
+        age_infos = [load_age(age_file_path) for age_file_path in age_source_path.glob("*.age")]
+        if not age_infos:
+            logging.warning("No age files found in client!")
+            return True
+        elif not all(age_infos):
+            return False
 
     # Collect a list of all age pages to be abused for the purpose of finding its resources
     # Would be nice if this were a common function of libHSPlasma...
     output = {}
     dlevel = plDebug.kDLWarning if args.verbose else plDebug.kDLNone
-    all_pages = [(i, dlevel) for i in find_all_pages(output, make_asset_path("data", client_path=args.source), age_info)]
+    all_pages = [(i, dlevel) for i in find_all_pages(output, make_asset_path("data", client_path=args.source), *age_infos)]
     logging.info(f"Found {len(all_pages)} Plasma pages.")
 
     # We want to get the age dependency data. Presently, those are the python and ogg files.
