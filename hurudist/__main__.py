@@ -20,11 +20,6 @@ from PyHSPlasma import *
 import sys
 import time
 
-# Command to module name lookup table
-commands = {
-    "age": "package_age",
-}
-
 if __name__ == "__main__":
     start_time = time.perf_counter()
     args = _arguments.main_parser.parse_args()
@@ -41,8 +36,7 @@ if __name__ == "__main__":
         plDebug.Init(plDebug.kDLNone)
 
     # Commands are just modules with a main() function
-    module_name = commands[args.command]
-    module = importlib.import_module(module_name)
+    module = importlib.import_module(args.command)
     try:
         result = module.main(args)
     except Exception as e:
