@@ -58,7 +58,7 @@ def find_page_externals(path, dlevel=plDebug.kDLNone):
 
     plDebug.Init(dlevel)
     mgr = plResManager()
-    page_info = mgr.ReadPage(str(path))
+    page_info = mgr.ReadPage(path)
     location = page_info.location
 
     def sfx_flags_as_str(flags):
@@ -179,7 +179,7 @@ def load_age(age_path):
 
     age_info = plAgeInfo()
     try:
-        age_info.readFromFile(str(age_path))
+        age_info.readFromFile(age_path)
     except IOError as ex:
         logging.exception(ex)
         return False
@@ -190,12 +190,12 @@ def load_sdl_descriptors(sdl_path):
     for sdl_file in sdl_path.glob("*.sdl"):
         # Strictly speaking, due to the configurable nature of the key, btea/notthedroids encrypted
         # SDL files are not allowed here. So, let's detect that.
-        if plEncryptedStream.IsFileEncrypted(str(sdl_file)):
+        if plEncryptedStream.IsFileEncrypted(sdl_file):
             logging.error("SDL File '{sdl_file.name}' is encrypted and cannot be used for packaging.")
             continue
 
         mgr = plSDLMgr()
-        mgr.readDescriptors(str(sdl_file))
+        mgr.readDescriptors(sdl_file)
         sdl_mgrs[sdl_file] = mgr
     return sdl_mgrs
 
