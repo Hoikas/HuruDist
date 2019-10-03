@@ -23,23 +23,6 @@ import zipfile
 
 _BUFFER_SIZE = 10 * 1024 * 1024
 
-def coerce_asset_dicts(*dicts):
-    """Forcibly merges asset dicts, preserving only options keys"""
-    output = {}
-    for dependency_categories in dicts:
-        for dependency_category, dependencies in dependency_categories.items():
-            if not dependency_category in output:
-                output[dependency_category] = dependencies
-            else:
-                output_category = output[dependency_category]
-                for dependency_name, dependency_dict in dependencies.items():
-                    output_dict = output_category.setdefault(dependency_name, dependency_dict)
-                    if "options" in output_dict:
-                        new_options = set(output_dict["options"])
-                        new_options.update(dependency_dict.get("options", []))
-                        output_dict["options"] = list(new_options)
-    return output
-
 def find_python_exe(major=2, minor=7):
     def _find_python_reg(py_version):
         import winreg
@@ -132,6 +115,10 @@ class OutputManager:
             if not parent.exists():
                 parent.mkdir(parents=True)
             shutil.copy2(source_path, dest_path)
+
+    @property
+    def is_zip(self):
+        return self._is_zip
 
     def write_file(self, path, data):
         if self._is_zip:

@@ -29,7 +29,24 @@ try:
 except ImportError:
     from yaml import Dumper
 
-def find_all_pages(output, data_path, *age_infos):
+def coerce_asset_dicts(all_outputs, all_pages, all_page_dicts):
+    """Forcibly merges asset dicts, preserving only options keys"""
+    for (age_name, page_path), age_page_dict in zip(all_pages, all_page_dicts):
+        output = all_outputs[age_name]
+
+        for asset_category, assets in age_page_dict.items():
+            if not asset_category in output:
+                output[asset_category] = assets
+            else:
+                output_category = output[asset_category]
+                for asset_name, asset_dict in assets.items():
+                    output_dict = output_category.setdefault(asset_name, asset_dict)
+                    if "options" in output_dict:
+                        new_options = set(output_dict["options"])
+                        new_options.update(asset_dict.get("options", []))
+                        output_dict["options"] = list(new_options)
+
+def find_all_pages(all_outputs, data_path, *age_infos):
     # Collect a list of all age pages to be abused for the purpose of finding its resources
     # Would be nice if this were a common function of libHSPlasma...
     def _generate_page_paths(age_info):
@@ -38,8 +55,10 @@ def find_all_pages(output, data_path, *age_infos):
         for i in range(age_info.getNumCommonPages(pvMoul)):
             yield data_path.joinpath(age_info.getCommonPageFilename(i, pvMoul))
 
-    data = output.setdefault("data", {})
     for age_info in age_infos:
+        output = all_outputs.setdefault(age_info.name, {})
+        data = output.setdefault("data", {})
+
         data[f"{age_info.name}.age"] = {}
         if age_info.seqPrefix > 0:
             data[f"{age_info.name}.fni"] = {}
@@ -47,7 +66,7 @@ def find_all_pages(output, data_path, *age_infos):
         for page_path in _generate_page_paths(age_info):
             if page_path.exists():
                 data[str(page_path.relative_to(data_path))] = {}
-                yield page_path
+                yield (age_info.name, page_path)
             else:
                 logging.warning(f"Age Page '{page_path.name}' is missing from the client...")
 
@@ -87,21 +106,22 @@ def find_page_externals(path, dlevel=plDebug.kDLNone):
 
     return result
 
-def find_pfm_externals(output, py_exe, py_path, sdl_path):
+def find_pfm_externals(all_outputs, py_exe, py_path, sdl_path):
     def pool_cb(output, asset_category, source_path, asset_paths):
         for asset_path in asset_paths:
             asset_key = str(asset_path.relative_to(source_path))
             output.setdefault(asset_category, {}).setdefault(asset_key, {})
 
-    with multiprocessing.pool.Pool(processes=2) as pool:
-        pfm_names = [pathlib.Path(i).stem for i in output.get("python", {}).keys()]
-        py_cb = functools.partial(pool_cb, output, "python", py_path)
-        sdl_cb = functools.partial(pool_cb, output, "sdl", sdl_path)
+    with multiprocessing.pool.Pool() as pool:
+        for output in all_outputs.values():
+            pfm_names = [pathlib.Path(i).stem for i in output.get("python", {}).keys()]
+            py_cb = functools.partial(pool_cb, output, "python", py_path)
+            sdl_cb = functools.partial(pool_cb, output, "sdl", sdl_path)
 
-        pool.apply_async(find_pfm_sdlmods, (sdl_path, pfm_names),
-                         callback=sdl_cb, error_callback=log_exception)
-        pool.apply_async(find_pfm_dependency_pymodules, (py_exe, py_path, pfm_names),
-                         callback=py_cb, error_callback=log_exception)
+            pool.apply_async(find_pfm_sdlmods, (sdl_path, pfm_names),
+                             callback=sdl_cb, error_callback=log_exception)
+            pool.apply_async(find_pfm_dependency_pymodules, (py_exe, py_path, pfm_names),
+                             callback=py_cb, error_callback=log_exception)
 
         # Ensure all jobs finish
         pool.close()
@@ -212,62 +232,76 @@ def make_asset_path(asset_category, *filename_pieces, **kwargs):
     else:
         return kwargs["client_path"].joinpath(subdir, *filename_pieces)
 
-def output_package(output, client_path, scripts_path, destination_path):
+def output_package(output, outfile, client_path, scripts_path, subpackage_name=""):
+    for asset_category, assets in output.items():
+        src_subdir = client_subdirectories[asset_category]
+        dest_subdir = asset_subdirectories[asset_category]
+        for asset_filename, asset_dict in assets.items():
+            asset_dict["source"] = str(pathlib.PureWindowsPath(dest_subdir, asset_filename))
+            asset_source_path = make_asset_path(asset_category, asset_filename,
+                                                client_path=client_path, scripts_path=scripts_path)
+            asset_dest_path = pathlib.Path(subpackage_name, dest_subdir, asset_filename)
+            outfile.copy_file(asset_source_path, asset_dest_path)
+
+    outfile.write_file(pathlib.Path(subpackage_name, "Contents.yml"), dump(output, Dumper=Dumper))
+
+def output_packages(all_outputs, client_path, scripts_path, destination_path):
     with _utils.OutputManager(destination_path) as outfile:
-        for asset_category, assets in output.items():
-            src_subdir = client_subdirectories[asset_category]
-            dest_subdir = asset_subdirectories[asset_category]
-            for asset_filename, asset_dict in assets.items():
-                asset_dict["source"] = str(pathlib.PureWindowsPath(dest_subdir, asset_filename))
-                asset_source_path = make_asset_path(asset_category, asset_filename,
-                                                    client_path=client_path, scripts_path=scripts_path)
-                asset_dest_path = pathlib.Path(dest_subdir, asset_filename)
-                outfile.copy_file(asset_source_path, asset_dest_path)
+        # If we only have one package, we'll just toss that single package out into the destination
+        if len(all_outputs) == 1:
+            package_dict = all_outputs.get(next(iter(all_outputs)))
+            logging.info("Writing package...")
+            output_package(package_dict, outfile, client_path, scripts_path)
+        else:
+            for package_name, package_dict in all_outputs.items():
+                logging.info(f"Writing subpackage '{package_name}'...")
+                output_package(package_dict, outfile, client_path, scripts_path, package_name)
 
-        logging.info("Writing bundle YAML...")
-        outfile.write_file("Contents.yml", dump(output, indent=4, Dumper=Dumper))
-
-
-def prepare_package(output, client_path, scripts_path, **kwargs):
+def prepare_packages(all_outputs, client_path, scripts_path, **kwargs):
     with multiprocessing.pool.Pool() as pool:
         missing_assets = []
-        for asset_category, assets in output.items():
-            for asset_filename, asset_dict in assets.items():
-                asset_source_path = make_asset_path(asset_category, asset_filename,
-                                                    client_path=client_path,
-                                                    scripts_path=scripts_path)
-                if not asset_source_path.exists():
-                    missing_assets.append((asset_category, asset_filename))
-                    logging.warning(f"Asset '{asset_source_path.name}' is missing from the client.")
-                    continue
+        for package_name, package_dict in all_outputs.items():
+            for asset_category, assets in package_dict.items():
+                for asset_filename, asset_dict in assets.items():
+                    asset_source_path = make_asset_path(asset_category, asset_filename,
+                                                        client_path=client_path,
+                                                        scripts_path=scripts_path)
+                    if not asset_source_path.exists():
+                        missing_assets.append((package_name, asset_category, asset_filename))
+                        logging.warning(f"Asset '{asset_source_path.name}' (used in '{package_name}') is missing from the client.")
+                        continue
 
-                # Fill in some information from the filesystem.
-                stat = asset_source_path.stat()
-                asset_dict["modify_time"] = int(stat.st_mtime)
-                asset_dict["size"] = stat.st_size
+                    # Fill in some information from the filesystem.
+                    stat = asset_source_path.stat()
+                    asset_dict["modify_time"] = int(stat.st_mtime)
+                    asset_dict["size"] = stat.st_size
 
-                # Command line specs
-                for key, value in kwargs.items():
-                    if value is not None:
-                        asset_dict[key] = str(value)
+                    # Command line specs
+                    for key, value in kwargs.items():
+                        if value is not None:
+                            asset_dict[key] = str(value)
 
-                # Now we submit slow operations to the process pool.
-                def pool_cb(asset_dict, key, value):
-                    asset_dict[key] = value
-                md5_complete = functools.partial(pool_cb, asset_dict, "hash_md5")
-                sha2_complete = functools.partial(pool_cb, asset_dict, "hash_sha2")
+                    # Now we submit slow operations to the process pool.
+                    def pool_cb(asset_dict, key, value):
+                        asset_dict[key] = value
+                    md5_complete = functools.partial(pool_cb, asset_dict, "hash_md5")
+                    sha2_complete = functools.partial(pool_cb, asset_dict, "hash_sha2")
 
-                pool.apply_async(_utils.hash_md5, (asset_source_path,),
-                                 callback=md5_complete, error_callback=log_exception)
-                pool.apply_async(_utils.hash_sha2, (asset_source_path,),
-                                 callback=sha2_complete, error_callback=log_exception)
+                    pool.apply_async(_utils.hash_md5, (asset_source_path,),
+                                     callback=md5_complete, error_callback=log_exception)
+                    pool.apply_async(_utils.hash_sha2, (asset_source_path,),
+                                     callback=sha2_complete, error_callback=log_exception)
 
         # Discard any missing thingos from our asset map and it will be very nearly final.
-        for asset_category, asset_filename in missing_assets:
-            output[asset_category].pop(asset_filename)
-        for asset_category in tuple(output.keys()):
-            if not output[asset_category]:
-                output.pop(asset_category)
+        for package_name, asset_category, asset_filename in missing_assets:
+            all_outputs[package_name][asset_category].pop(asset_filename)
+        for package_name in tuple(all_outputs.keys()):
+            package_dict = all_outputs[package_name]
+            for asset_category in tuple(package_dict.keys()):
+                if not package_dict[asset_category]:
+                    package_dict.pop(asset_category)
+            if not package_dict:
+                all_outputs.pop(package_name)
 
         # Wait for the pool to finish
         pool.close()
@@ -275,14 +309,13 @@ def prepare_package(output, client_path, scripts_path, **kwargs):
 
         return not bool(missing_assets)
 
-
 def main(args):
     if args.moul_scripts and not args.moul_scripts.exists():
         logging.error(f"Scripts path '{args.moul_scripts}' does not exist.")
         return False
 
     if args.age:
-        age_info = load_age(make_asset_path("data", f"{args.age_name}.age", client_path=args.source))
+        age_info = load_age(make_asset_path("data", f"{args.age}.age", client_path=args.source))
         if age_info is None:
             return False
         age_infos = (age_info,)
@@ -298,21 +331,21 @@ def main(args):
 
     # Collect a list of all age pages to be abused for the purpose of finding its resources
     # Would be nice if this were a common function of libHSPlasma...
-    output = {}
-    dlevel = plDebug.kDLWarning if args.verbose else plDebug.kDLNone
-    all_pages = [(i, dlevel) for i in find_all_pages(output, make_asset_path("data", client_path=args.source), *age_infos)]
+    all_outputs = {}
+    all_pages = [i for i in find_all_pages(all_outputs, make_asset_path("data", client_path=args.source), *age_infos)]
     logging.info(f"Found {len(all_pages)} Plasma pages.")
 
     # We want to get the age dependency data. Presently, those are the python and ogg files.
     # Unfortunately, libHSPlasma insists on reading in the entire page before allowing us to
     # do any of that. So, we will execute this part in a process pool.
     with multiprocessing.pool.Pool() as pool:
-        results = pool.starmap(find_page_externals, all_pages)
+        dlevel = plDebug.kDLWarning if args.verbose else plDebug.kDLNone
+        results = pool.starmap(find_page_externals, ((page_path, dlevel) for age_name, page_path in all_pages))
 
     # What we have now is a list of dicts, each nearly obeying the output format spec.
     # Now, we have to merge them... ugh.
     logging.info(f"Merging results from {len(results)} dependency lists...")
-    output = _utils.coerce_asset_dicts(output, *results)
+    coerce_asset_dicts(all_outputs, all_pages, results)
 
     # PythonFileMods can import other python modules and be a STATEDESC
     if not args.skip_pfm_dependencies:
@@ -321,16 +354,16 @@ def main(args):
             logging.critical("Uru-compatible python interpreter unavailable.")
             return False
         logging.info("Searching for PythonFileMod dependencies...")
-        find_pfm_externals(output, py_exe,
+        find_pfm_externals(all_outputs, py_exe,
                            make_asset_path("python", client_path=args.source, scripts_path=args.moul_scripts),
                            make_asset_path("sdl", client_path=args.source, scripts_path=args.moul_scripts))
 
     # OK, now everything is (mostly) sane.
     logging.info("Beginning final pass over assets...")
-    prepare_package(output, args.source, args.moul_scripts, dataset=args.dataset, distribute=args.distribute)
+    prepare_packages(all_outputs, args.source, args.moul_scripts, dataset=args.dataset, distribute=args.distribute)
 
     # Time to produce the bundle
     logging.info("Producing final asset bundle...")
-    output_package(output, args.source, args.moul_scripts, args.destination)
+    output_packages(all_outputs, args.source, args.moul_scripts, args.destination)
 
     return True
