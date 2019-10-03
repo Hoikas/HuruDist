@@ -128,7 +128,7 @@ class OutputManager:
 
     def write_file(self, path, data):
         if self._is_zip:
-            self._zip.writestr(path, data)
+            self._zip.writestr(str(path), data)
         else:
             dest_path = self._path / path
             parent = dest_path.parent
