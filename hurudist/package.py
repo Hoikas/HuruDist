@@ -160,8 +160,6 @@ def find_python_dependencies(py_exe, module_name, scripts_path):
                 try:
                     module_path.relative_to(plasma_python_path)
                 except ValueError:
-                    pass
-                else:
                     yield module_path
     else:
         if result.returncode == PyToolsResultCodes.traceback:
