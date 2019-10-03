@@ -112,7 +112,8 @@ def find_pfm_externals(all_outputs, py_exe, py_path, sdl_path):
             asset_key = str(asset_path.relative_to(source_path))
             output.setdefault(asset_category, {}).setdefault(asset_key, {})
 
-    with multiprocessing.pool.Pool() as pool:
+    pool =  multiprocessing.pool.Pool(initializer=_utils.multiprocess_init)
+    try:
         for output in all_outputs.values():
             pfm_names = [pathlib.Path(i).stem for i in output.get("python", {}).keys()]
             py_cb = functools.partial(pool_cb, output, "python", py_path)
@@ -122,7 +123,11 @@ def find_pfm_externals(all_outputs, py_exe, py_path, sdl_path):
                              callback=sdl_cb, error_callback=log_exception)
             pool.apply_async(find_pfm_dependency_pymodules, (py_exe, py_path, pfm_names),
                              callback=py_cb, error_callback=log_exception)
-
+    except:
+        pool.terminate()
+        pool.join()
+        raise
+    else:
         # Ensure all jobs finish
         pool.close()
         pool.join()
@@ -258,7 +263,8 @@ def output_packages(all_outputs, client_path, scripts_path, destination_path):
                 output_package(package_dict, outfile, client_path, scripts_path, package_name)
 
 def prepare_packages(all_outputs, client_path, scripts_path, **kwargs):
-    with multiprocessing.pool.Pool() as pool:
+    pool = multiprocessing.pool.Pool(initializer=_utils.multiprocess_init)
+    try:
         missing_assets = []
         for package_name, package_dict in all_outputs.items():
             for asset_category, assets in package_dict.items():
@@ -302,7 +308,11 @@ def prepare_packages(all_outputs, client_path, scripts_path, **kwargs):
                     package_dict.pop(asset_category)
             if not package_dict:
                 all_outputs.pop(package_name)
-
+    except:
+        pool.terminate()
+        pool.join()
+        raise
+    else:
         # Wait for the pool to finish
         pool.close()
         pool.join()
@@ -338,9 +348,14 @@ def main(args):
     # We want to get the age dependency data. Presently, those are the python and ogg files.
     # Unfortunately, libHSPlasma insists on reading in the entire page before allowing us to
     # do any of that. So, we will execute this part in a process pool.
-    with multiprocessing.pool.Pool() as pool:
+    pool =  multiprocessing.pool.Pool(initializer=_utils.multiprocess_init)
+    try:
         dlevel = plDebug.kDLWarning if args.verbose else plDebug.kDLNone
         results = pool.starmap(find_page_externals, ((page_path, dlevel) for age_name, page_path in all_pages))
+    except:
+        pool.terminate()
+        pool.join()
+        raise
 
     # What we have now is a list of dicts, each nearly obeying the output format spec.
     # Now, we have to merge them... ugh.

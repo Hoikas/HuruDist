@@ -17,6 +17,7 @@ import hashlib
 import logging
 import pathlib
 import shutil
+import signal
 import subprocess
 import sys
 import zipfile
@@ -85,6 +86,11 @@ def hash_md5(path):
 
 def hash_sha2(path):
     return _hash(path, hashlib.sha512())
+
+def multiprocess_init():
+    """Causes worker processes to ignore SIGINT and log properly"""
+    logging.basicConfig(format="[%(asctime)s] %(levelname)s: %(message)s")
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 class OutputManager:
     def __init__(self, path):
