@@ -11,6 +11,7 @@ Valid keys are as follows:
 - `python`
 - `sdl`
 - `sfx`
+- `subpackages`
 
 ## H'uru Asset Map
 The H'uru Asset Object replaces the string value from GatherBuild. Only the `source` key of the H'uru Asset Object is required. All other keys are optional. Each asset object is keyed by an asset filename that which represents the location of the file in the client. The following is a list of all meaningful keys and their anticipated values.
@@ -20,14 +21,14 @@ The H'uru Asset Object replaces the string value from GatherBuild. Only the `sou
 
 `compressed_source` represents the relative path from the content file to a compressed copy of `source`. The same restrictions that apply to `source` apply to `compressed_source`.
 
-## Compression
+### Compression
 `compression` indicates either the desired compression type or the compression used by `compressed_source`. Valid options are:
 - `gzip`
 - `none`
 
 **NOTE**: Not specifying this key gives the user the freedom to select their choice of compression options from the list of valid options.
 
-## Hash
+### Hash
 `hash_md5` respresents the MD5 hash of the file given by `source`. **WARNING**: The MD5 hash is known to be broken. This is included only for compatibility with the MOUL FileSrv protocol.
 
 `hash_sha2` represents the SHA-2 512 hash of the file given by `source`.
@@ -36,28 +37,28 @@ The H'uru Asset Object replaces the string value from GatherBuild. Only the `sou
 
 `compressed_hash_sha2` represents the SHA-2 512 hash of the file given by `compressed_source`.
 
-## Timestamp
+### Timestamp
 `modify_time` represents the time since the unix epoch that `source` was last modified.
 
-## Size
+### Size
 `size` represents the size of the file in bytes.
 
 `compressed_size` represents the size of the file given by `compressed_source` in bytes.
 
-## Data Set
+### Data Set
 `dataset` represents the dataset that the asset originates from. This enables asset scripts to properly handle asset collisions. A collision is defined as any assets whose client destination overlap and hashes do not match. Any collisions originating from the same `dataset` type is an error. Valid options are:
 - `cyan` *A Cyan standard asset. **NOTE**: This value will cause `distribute` to default to `false`.*
 - `base` *A baseline asset for the shard. Any collision with a `cyan` asset will cause this asset to be used.*
 - `contrib` *A fan-contributed asset. A collision with any other asset will result in this asset being at best discarded.*
 - `override` *Highest priority asset, overrides all other `dataset` options.*
 
-## Distribute
+### Distribute
 `distribute` respresents the ability for the asset to be freely redistributed on an asset/file server. Valid options are:
 - `true` - **DEFAULT** *Allow downloads of this asset.*
 - `false` - *Do ***not*** allow downloads of this asset.*
 - `always` - *Overrides any previous `false` values and allows the asset to be redistributed.*
 
-## Options
+### Options
 `options` represents a list of string flags that are generally useful only to the client internally or to a file server. A generator should pass these flags along to any generated manifest. Valid options are:
 - `sound_cache_split` - *only valid for objects in the `sfx` key*
 - `sound_stream` - *only valid for objects in the `sfx` key*
@@ -65,17 +66,22 @@ The H'uru Asset Object replaces the string value from GatherBuild. Only the `sou
 - `redist` - *only valid for objects in the `artifacts` key*
 - `pfm` - *only valid for objects in the `python` key*
 
-## Build Type
+### Build Type
 `build_type` represents the client build type an `artifact` should be used in. This key is ignored outside of the `artifacts` key. Not specifying this key results in the asset being used for all build types. Valid options are:
 - `external`
 - `internal`
 
-## Architecture
+### Architecture
 `arch` respresents the client build architecture. This key is ignored outside of the `artifacts` key. Not specifying this key results in the asset being used on all architectures. Valid options are:
 - `amd64`
 - `i386`
 
-## Operating System
+### Operating System
 `os` represents the client operating system. This key is ignored outside of the `artifacts` key. Not specifying this key results in the asset being used on all operating systems. Valid options are:
 - `mac`
 - `win`
+
+## Subpackages
+The `subpackages` key allows one to reference named subpackages in a single asset distribution. The purpose of this is to be able to track multiple ages, clients, and other data in a single location for the generation of a shard or client. A subpackage should not reference any another subpackages itself.
+
+To identify a subpackage, set the `source` key to the path to the subpackage YAML file relative to the bundle YAML file. Subpackages should not attempt to leave the directory tree of the main bundle. Use the `name` key to set the name of a subpackage. It is permissible to have multiple subpackages with the same name. These subpackages will be merged according to the rules specified in this document.

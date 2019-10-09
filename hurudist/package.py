@@ -246,7 +246,7 @@ def output_package(output, outfile, client_path, scripts_path, subpackage_name="
             asset_dest_path = pathlib.Path(subpackage_name, dest_subdir, asset_filename)
             outfile.copy_file(asset_source_path, asset_dest_path)
 
-    outfile.write_file(pathlib.Path(subpackage_name, "Contents.yml"), dump(output, Dumper=Dumper))
+    outfile.write_file(pathlib.Path(subpackage_name, "contents.yml"), dump(output, Dumper=Dumper))
 
 def output_packages(all_outputs, client_path, scripts_path, destination_path):
     with _utils.OutputManager(destination_path) as outfile:
@@ -259,6 +259,10 @@ def output_packages(all_outputs, client_path, scripts_path, destination_path):
             for package_name, package_dict in all_outputs.items():
                 logging.info(f"Writing subpackage '{package_name}'...")
                 output_package(package_dict, outfile, client_path, scripts_path, package_name)
+
+            # Write bundle descriptor yaml
+            bundle = [{ "name": i, "source": str(pathlib.PureWindowsPath(i, "contents.yml")) } for i in all_outputs.keys()]
+            outfile.write_file("contents.yml", dump({"subpackages": bundle}, Dumper=Dumper))
 
 def prepare_packages(all_outputs, client_path, scripts_path, **kwargs):
     pool = multiprocessing.pool.Pool(initializer=_utils.multiprocess_init)
