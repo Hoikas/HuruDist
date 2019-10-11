@@ -16,6 +16,7 @@
 from _constants import *
 import functools
 import io
+import itertools
 import logging
 import multiprocessing, multiprocessing.pool
 import pathlib
@@ -69,6 +70,62 @@ def find_all_pages(all_outputs, data_path, *age_infos):
                 yield (age_info.name, page_path)
             else:
                 logging.warning(f"Age Page '{page_path.name}' is missing from the client...")
+
+def find_client_dependencies(all_outputs, client_path, scripts_path, client_arch):
+    output = all_outputs.setdefault("Client", {})
+    asset_category = output.setdefault("artifacts", {})
+
+    def handle_client_file(path, exe_defn={}):
+        extension = path.suffix.lower()
+        if extension == ".lnk" or not path.is_file():
+            return
+
+        asset = asset_category.setdefault(str(path.relative_to(client_path)), exe_defn)
+        if extension in {".cab", ".dll", ".exe", ".msi"}:
+            # Not a client, so maybe an installer...
+            if not exe_defn and extension in {".exe", ".msi"}:
+                options = asset.setdefault("options", [])
+                if "redist" not in options:
+                    options.append("redist")
+
+            # INTERESTING!!! `setdefault` does not create a copy under the hood, so if you move
+            # this above the `not exe_defn` then it fails...
+            asset["os"] = "win"
+        elif extension in {"", ".so"}:
+            asset["os"] = "unix"
+        elif extension in {".app", ".dmg"}:
+            asset["os"] = "mac"
+        asset["arch"] = str(client_arch)
+
+    # Anything in the client root (except shortcuts) must be included.
+    for i in client_path.iterdir():
+        handle_client_file(i, client_executables.get(i.stem.lower(), {}))
+
+    # MOULa standard uses the "extras" directory for redists...?
+    for i in client_path.joinpath("extras").iterdir():
+        handle_client_file(i)
+
+    # Required SDLs for plSynchedObject
+    asset_category = output.setdefault("sdl", {})
+    sdl_path = make_asset_path("sdl", client_path=client_path, scripts_path=scripts_path)
+    sdl_mgrs = load_sdl_descriptors(sdl_path)
+    for sdl_paths, _ in map(functools.partial(find_sdl_depdendencies, sdl_mgrs), client_sdl):
+        for i in sdl_paths:
+            asset_category.setdefault(i.name, {})
+
+    # Engine python code
+    asset_category = output.setdefault("python", {})
+    py_path = make_asset_path("python", client_path=client_path, scripts_path=scripts_path)
+    for i in itertools.chain(py_path.joinpath("plasma").glob("*.py"), py_path.joinpath("system").glob("*.py")):
+        asset_category.setdefault(str(i.relative_to(py_path)), {})
+
+    # Core videos
+    asset_category = output.setdefault("avi", {})
+    avi_path = make_asset_path("avi", client_path=client_path)
+    for i in itertools.chain(avi_path.glob("*.avi"), avi_path.glob("*.bik"), avi_path.glob("*.webm")):
+        stem = i.stem.lower()
+        if stem.startswith("intro") or stem in {"cyanworlds", "uruliveintro"}:
+            asset_category.setdefault(str(i.relative_to(avi_path)), {})
 
 def find_page_externals(path, dlevel=plDebug.kDLNone):
     # Optimization: Textures.prp does not have any externals...
@@ -181,7 +238,7 @@ def find_sdl_depdendencies(sdl_mgrs, descriptor_name, embedded_sdr=False):
         if embedded_sdr:
             logging.error(f"Embedded SDL Descriptor '{descriptor_name}' is missing from the client.")
         else:
-            logging.debug(f"Python SDL '{descriptor_name}' is not present.")
+            logging.debug(f"Top-level SDL '{descriptor_name}' is missing from the client.")
         return dependencies, descriptors
 
     dependencies.add(sdl_file)
@@ -331,7 +388,7 @@ def main(args):
         if age_info is None:
             return False
         age_infos = (age_info,)
-    else:
+    elif not args.no_ages:
         logging.info("Loading age files...")
         age_source_path = make_asset_path("data", client_path=args.source)
         age_infos = [load_age(age_file_path) for age_file_path in age_source_path.glob("*.age")]
@@ -340,6 +397,8 @@ def main(args):
             return True
         elif not all(age_infos):
             return False
+    else:
+        age_infos = []
 
     # Collect a list of all age pages to be abused for the purpose of finding its resources
     # Would be nice if this were a common function of libHSPlasma...
@@ -374,6 +433,11 @@ def main(args):
         find_pfm_externals(all_outputs, py_exe,
                            make_asset_path("python", client_path=args.source, scripts_path=args.moul_scripts),
                            make_asset_path("sdl", client_path=args.source, scripts_path=args.moul_scripts))
+
+    # Gather client exes, DLLs, and installers.
+    if not args.no_client:
+        logging.info("Searching for client files...")
+        find_client_dependencies(all_outputs, args.source, args.moul_scripts, args.client_arch)
 
     # OK, now everything is (mostly) sane.
     logging.info("Beginning final pass over assets...")

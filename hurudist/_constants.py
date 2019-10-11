@@ -26,13 +26,37 @@ client_subdirectories = {
 }
 
 asset_subdirectories = {
-    "artifacts": "Client",
-    "avi": "GameVideos",
-    "data": "GameData",
-    "python": "GameScripts",
-    "sdl": "GameState",
-    "sfx": "GameAudio",
+    "artifacts": "base",
+    "avi": "videos",
+    "data": "data",
+    "python": "scripts",
+    "sdl": "state",
+    "sfx": "audio",
 }
+
+client_executables = {
+    "plclient": { "build_type": "internal" },
+    "plcrashhandler": { "build_type": "internal" },
+    "plurulauncher": { "build_type": "internal" },
+    "urucrashhandler": { "build_type": "external" },
+    "uruexplorer": { "build_type": "external" },
+    "urulauncher": { "build_type": "external" },
+}
+
+client_sdl = frozenset((
+    "AGMaster",
+    "Avatar",
+    "AvatarPhysical",
+    "CloneMessage",
+    "Clothing",
+    "Layer",
+    "MorphSequence",
+    "ParticleSystem",
+    "Physical",
+    "Responder",
+    "Sound",
+    "XRegion",
+))
 
 @enum.unique
 class PyToolsResultCodes(enum.IntEnum):
@@ -42,9 +66,23 @@ class PyToolsResultCodes(enum.IntEnum):
     traceback = _py2constants.TOOLS_MODULE_TRACEBACK
     file_not_found = _py2constants.TOOLS_FILE_NOT_FOUND
 
+
 class _ArgParseEnum:
     def __str__(self):
         return self.name
+
+
+@enum.unique
+class ClientArch(_ArgParseEnum, enum.Enum):
+    amd64 = enum.auto()
+    i386 = enum.auto()
+
+
+@enum.unique
+class ClientOS(_ArgParseEnum, enum.Enum):
+    mac = enum.auto()
+    win = enum.auto()
+
 
 @enum.unique
 class Dataset(_ArgParseEnum, enum.Enum):
