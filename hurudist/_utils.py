@@ -116,22 +116,27 @@ class OutputManager:
         if self._is_zip:
             self._zip.write(source_path, dest_path)
         else:
-            dest_path = self._path / dest_path
-            parent = dest_path.parent
-            if not parent.exists():
-                parent.mkdir(parents=True)
-            shutil.copy2(source_path, dest_path)
+            shutil.copy2(source_path, self._get_fs_path(dest_path))
+
+    def _get_fs_path(self, path):
+        dest_path = self._path.joinpath(path)
+        parent = dest_path.parent
+        if not parent.exists():
+            parent.mkdir(parents=True)
+        return dest_path
 
     @property
     def is_zip(self):
         return self._is_zip
 
+    def open(self, path, mode):
+        if self._is_zip:
+            return self._zip.open(str(path), mode)
+        else:
+            return open(self._get_fs_path(path), mode)
+
     def write_file(self, path, data):
         if self._is_zip:
             self._zip.writestr(str(path), data)
         else:
-            dest_path = self._path / path
-            parent = dest_path.parent
-            if not parent.exists():
-                parent.mkdir(parents=True)
-            dest_path.write_text(data)
+            self._get_fs_path(path).write_text(data)

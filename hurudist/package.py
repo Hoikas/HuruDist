@@ -13,6 +13,9 @@
 #    You should have received a copy of the GNU General Public License
 #    along with HuruDist.  If not, see <http://www.gnu.org/licenses/>.
 
+from PyHSPlasma import *
+from ruamel.yaml import YAML
+
 from _constants import *
 import functools
 import io
@@ -20,15 +23,8 @@ import itertools
 import logging
 import multiprocessing, multiprocessing.pool
 import pathlib
-from PyHSPlasma import *
 import subprocess
 import _utils
-
-from yaml import dump
-try:
-    from yaml import CDumper as Dumper
-except ImportError:
-    from yaml import Dumper
 
 def coerce_asset_dicts(all_outputs, all_pages, all_page_dicts):
     """Forcibly merges asset dicts, preserving only options keys"""
@@ -292,7 +288,7 @@ def make_asset_path(asset_category, *filename_pieces, **kwargs):
     else:
         return kwargs["client_path"].joinpath(subdir, *filename_pieces)
 
-def output_package(output, outfile, client_path, scripts_path, subpackage_name=""):
+def output_package(output, yaml, outfile, client_path, scripts_path, subpackage_name=""):
     for asset_category, assets in output.items():
         src_subdir = client_subdirectories[asset_category]
         dest_subdir = asset_subdirectories[asset_category]
@@ -303,23 +299,26 @@ def output_package(output, outfile, client_path, scripts_path, subpackage_name="
             asset_dest_path = pathlib.Path(subpackage_name, dest_subdir, asset_filename)
             outfile.copy_file(asset_source_path, asset_dest_path)
 
-    outfile.write_file(pathlib.Path(subpackage_name, "contents.yml"), dump(output, Dumper=Dumper))
+    path = pathlib.Path(subpackage_name, "contents.yml")
+    yaml.dump(output, outfile.open(path, "w"))
 
 def output_packages(all_outputs, client_path, scripts_path, destination_path):
+    yaml = YAML()
+
     with _utils.OutputManager(destination_path) as outfile:
         # If we only have one package, we'll just toss that single package out into the destination
         if len(all_outputs) == 1:
             package_dict = all_outputs.get(next(iter(all_outputs)))
             logging.info("Writing package...")
-            output_package(package_dict, outfile, client_path, scripts_path)
+            output_package(package_dict, yaml, outfile,client_path, scripts_path)
         else:
             for package_name, package_dict in all_outputs.items():
                 logging.info(f"Writing subpackage '{package_name}'...")
-                output_package(package_dict, outfile, client_path, scripts_path, package_name)
+                output_package(package_dict, yaml, outfile, client_path, scripts_path, package_name)
 
             # Write bundle descriptor yaml
             bundle = [{ "name": i, "source": str(pathlib.PureWindowsPath(i, "contents.yml")) } for i in all_outputs.keys()]
-            outfile.write_file("contents.yml", dump({"subpackages": bundle}, Dumper=Dumper))
+            yaml.dump({"subpackages": bundle}, outfile.open("contents.yaml", "w"))
 
 def prepare_packages(all_outputs, client_path, scripts_path, **kwargs):
     pool = multiprocessing.pool.Pool(initializer=_utils.multiprocess_init)
