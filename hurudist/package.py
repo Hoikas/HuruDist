@@ -159,23 +159,25 @@ def find_page_externals(path, dlevel=plDebug.kDLNone):
 
     return result
 
-def find_pfm_externals(all_outputs, py_exe, py_path, sdl_path):
+def find_pfm_externals(all_outputs, py_exe, no_py_mods, no_sdl_mods, py_path, sdl_path):
     def pool_cb(output, asset_category, source_path, asset_paths):
         for asset_path in asset_paths:
             asset_key = str(asset_path.relative_to(source_path))
             output.setdefault(asset_category, {}).setdefault(asset_key, {})
 
-    pool =  multiprocessing.pool.Pool(initializer=_utils.multiprocess_init)
+    pool = multiprocessing.pool.Pool(initializer=_utils.multiprocess_init)
     try:
         for output in all_outputs.values():
             pfm_names = [pathlib.Path(i).stem for i in output.get("python", {}).keys()]
             py_cb = functools.partial(pool_cb, output, "python", py_path)
             sdl_cb = functools.partial(pool_cb, output, "sdl", sdl_path)
 
-            pool.apply_async(find_pfm_sdlmods, (sdl_path, pfm_names),
-                             callback=sdl_cb, error_callback=log_exception)
-            pool.apply_async(find_pfm_dependency_pymodules, (py_exe, py_path, pfm_names),
-                             callback=py_cb, error_callback=log_exception)
+            if not no_sdl_mods:
+                pool.apply_async(find_pfm_sdlmods, (sdl_path, pfm_names),
+                                 callback=sdl_cb, error_callback=log_exception)
+            if not no_py_mods:
+                pool.apply_async(find_pfm_dependency_pymodules, (py_exe, py_path, pfm_names),
+                                 callback=py_cb, error_callback=log_exception)
     except:
         pool.terminate()
         pool.join()
@@ -423,13 +425,13 @@ def main(args):
     coerce_asset_dicts(all_outputs, all_pages, results)
 
     # PythonFileMods can import other python modules and be a STATEDESC
-    if not args.skip_pfm_dependencies:
+    if not args.no_pfm_dependencies:
         py_exe = args.python if args.python else _utils.find_python_exe()
         if not py_exe:
             logging.critical("Uru-compatible python interpreter unavailable.")
             return False
         logging.info("Searching for PythonFileMod dependencies...")
-        find_pfm_externals(all_outputs, py_exe,
+        find_pfm_externals(all_outputs, py_exe, args.no_pfm_py_dependencies, args.no_pfm_sdl_dependencies,
                            make_asset_path("python", client_path=args.source, scripts_path=args.moul_scripts),
                            make_asset_path("sdl", client_path=args.source, scripts_path=args.moul_scripts))
 

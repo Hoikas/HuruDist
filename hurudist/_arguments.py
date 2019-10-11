@@ -45,4 +45,8 @@ package_parser.add_argument("--distribute", type=lambda x: Distribute[x], choice
                         help="ability to redistribute this asset package")
 package_parser.add_argument("--moul-scripts", type=Path, help="path to the moul-scripts repository for this client")
 package_parser.add_argument("--python", type=Path, help="path to the python interpreter executable used by this client")
-package_parser.add_argument("--skip-pfm-dependencies", action="store_true", help="don't include Python dependency modules and SDLs in this package")
+
+pfmdeps_group = package_parser.add_mutually_exclusive_group()
+pfmdeps_group.add_argument("--no-pfm-dependencies", action="store_true", help="don't include Python dependency modules and SDLs in this package")
+pfmdeps_group.add_argument("--no-pfm-py-dependencies", action="store_true", help="don't include modules imported by PythonFileModifier modules")
+pfmdeps_group.add_argument("--no-pfm-sdl-dependencies", action="store_true", help="don't include PythonSDLModifiers")
