@@ -49,3 +49,4 @@ if __name__ == "__main__":
             logging.error(f"H'uru Distribution Manager exiting with errors in {delta:.2f}s.")
         else:
             logging.info(f"H'uru Distribution Manager completed successfully in {delta:.2f}s.")
+        sys.exit(0 if result else 1)

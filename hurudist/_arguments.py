@@ -29,7 +29,7 @@ sub_parsers = main_parser.add_subparsers(title="Command", dest="command", requir
 # Package age command argment parser
 package_parser = sub_parsers.add_parser("package")
 package_parser.add_argument("source", type=Path, help="path to the root of the Plasma client")
-package_parser.add_argument("destination", type=Path, help="path to store the resulting asset bundle")
+package_parser.add_argument("destination", type=Path, help="path to store the resulting asset database")
 
 client_group = package_parser.add_argument_group()
 client_group.add_argument("--no-client", action="store_true", help="don't package the client")
@@ -50,3 +50,9 @@ pfmdeps_group = package_parser.add_mutually_exclusive_group()
 pfmdeps_group.add_argument("--no-pfm-dependencies", action="store_true", help="don't include Python dependency modules and SDLs in this package")
 pfmdeps_group.add_argument("--no-pfm-py-dependencies", action="store_true", help="don't include modules imported by PythonFileModifier modules")
 pfmdeps_group.add_argument("--no-pfm-sdl-dependencies", action="store_true", help="don't include PythonSDLModifiers")
+
+
+# Merge command argument parser
+merge_parser = sub_parsers.add_parser("merge")
+merge_parser.add_argument("source", type=Path, help="path to the root of the asset database to merge")
+merge_parser.add_argument("destination", type=Path, help="path to store the resulting asset package")

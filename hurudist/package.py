@@ -320,7 +320,7 @@ def output_packages(all_outputs, client_path, scripts_path, destination_path):
 
             # Write bundle descriptor yaml
             bundle = [{ "name": i, "source": str(pathlib.PureWindowsPath(i, "contents.yml")) } for i in all_outputs.keys()]
-            yaml.dump({"subpackages": bundle}, outfile.open("contents.yaml", "w"))
+            yaml.dump({"subpackages": bundle}, outfile.open("contents.yml", "w"))
 
 def prepare_packages(all_outputs, client_path, scripts_path, **kwargs):
     pool = multiprocessing.pool.Pool(initializer=_utils.multiprocess_init)

@@ -85,7 +85,7 @@ class ClientOS(_ArgParseEnum, enum.Enum):
 
 
 @enum.unique
-class Dataset(_ArgParseEnum, enum.Enum):
+class Dataset(_ArgParseEnum, enum.IntEnum):
     cyan = enum.auto()
     base = enum.auto()
     contrib = enum.auto()

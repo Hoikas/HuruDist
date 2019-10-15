@@ -87,10 +87,20 @@ def hash_md5(path):
 def hash_sha2(path):
     return _hash(path, hashlib.sha512())
 
+def merge_options(target_asset, other_assets):
+    options = set(target_asset.get("options", []))
+    for i in other_assets:
+        options.update(i.get("options", []))
+    if options:
+        target_asset["options"] = list(options)
+
 def multiprocess_init():
     """Causes worker processes to ignore SIGINT and log properly"""
     logging.basicConfig(format="[%(asctime)s] %(levelname)s: %(message)s")
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+def win_path_str(*pathsegments):
+    return str(pathlib.PureWindowsPath(*pathsegments))
 
 class OutputManager:
     def __init__(self, path):
